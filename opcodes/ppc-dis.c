@@ -192,6 +192,8 @@ struct ppc_mopt ppc_opts[] = {
     0 },
   { "ppc",     PPC_OPCODE_PPC,
     0 },
+  { "nux",     (PPC_OPCODE_PPC | PPC_OPCODE_S2PP),
+    0 },
   { "ppc32",   PPC_OPCODE_PPC,
     0 },
   { "32",      PPC_OPCODE_PPC,

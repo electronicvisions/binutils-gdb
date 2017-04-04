@@ -231,8 +231,8 @@ extern const unsigned int spe2_num_opcodes;
 /* Opcode is only supported by powerxx architecture.  */
 #define PPC_OPCODE_POWERXX  0x400000000000ull
 
-/* s2pp: Opcode which is supported by the Human Brain Project's s2pp processor. */
-#define PPC_OPCODE_S2PP       PPC_OPCODE_PPC
+/* Opcode is supported by the Human Brain Project's s2pp processor. */
+#define PPC_OPCODE_S2PP     0x800000000000ull
 
 /* A macro to extract the major opcode from an instruction.  */
 #define PPC_OP(i) (((i) >> 26) & 0x3f)

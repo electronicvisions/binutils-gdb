@@ -1404,6 +1404,8 @@ PowerPC options:\n"));
   fprintf (stream, _("\
 -mcom                   generate code for Power/PowerPC common instructions\n"));
   fprintf (stream, _("\
+-mnux                   generate code for the Nux architecture\n"));
+  fprintf (stream, _("\
 -many                   generate code for any architecture (PWR/PWRX/PPC)\n"));
   fprintf (stream, _("\
 -maltivec               generate code for AltiVec\n"));
