@@ -5853,7 +5853,7 @@ const struct powerpc_opcode powerpc_opcodes[] = {
 
 {"waitrsv",	X(31,62)|(1<<21), 0xffffffff, E500MC|PPCA2, 0,		{0}},
 {"waitimpl",	X(31,62)|(2<<21), 0xffffffff, E500MC|PPCA2, 0,		{0}},
-{"wait",	X(31,62),	XWC_MASK,    E500MC|PPCA2, 0,		{WC}},
+{"wait",	X(31,62),	XWC_MASK,    E500MC|PPCA2|PPCS2PP, 0,		{WC}},
 
 {"dcbstep",	XRT(31,63,0),	XRT_MASK,    E500MC|PPCA2, 0,		{RA0, RB}},
 
