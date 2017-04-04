@@ -204,8 +204,8 @@ extern const int vle_num_opcodes;
 /* Opcode is supported by ppc821/850/860.  */
 #define PPC_OPCODE_860	      0x10000000000ull
 
-/* s2pp: Opcode which is supported by the Human Brain Project's s2pp processor. */
-#define PPC_OPCODE_S2PP       PPC_OPCODE_PPC
+/* Opcode is supported by the Human Brain Project's s2pp processor. */
+#define PPC_OPCODE_S2PP       0x20000000000ull
 
 /* A macro to extract the major opcode from an instruction.  */
 #define PPC_OP(i) (((i) >> 26) & 0x3f)
