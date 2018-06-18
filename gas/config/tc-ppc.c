@@ -1355,6 +1355,7 @@ PowerPC options:\n\
 -mpower8, -mpwr8        generate code for Power8 architecture\n\
 -mpower9, -mpwr9        generate code for Power9 architecture\n\
 -mcell                  generate code for Cell Broadband Engine architecture\n\
+-mnux                   generate code for the Nux architecture\n\
 -mcom                   generate code for Power/PowerPC common instructions\n\
 -many                   generate code for any architecture (PWR/PWRX/PPC)\n"));
   fprintf (stream, _("\

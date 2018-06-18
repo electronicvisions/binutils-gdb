@@ -234,6 +234,9 @@ extern const int spe2_num_opcodes;
 /* Opcode is supported by EFS2.  */
 #define PPC_OPCODE_EFS2	    0x200000000000ull
 
+/* Opcode is supported by the Human Brain Project's s2pp processor */
+#define PPC_OPCODE_S2PP	    0x400000000000ull
+
 /* A macro to extract the major opcode from an instruction.  */
 #define PPC_OP(i) (((i) >> 26) & 0x3f)
 
@@ -442,6 +445,10 @@ extern const unsigned int num_powerpc_operands;
 #define PPC_OPERAND_FSL (0x800000)
 #define PPC_OPERAND_FCR (0x1000000)
 #define PPC_OPERAND_UDI (0x2000000)
+
+/* s2pp: This is a fixed-point vector register. */
+#define PPC_OPERAND_FXV_REG (0x4000000)
+
 
 /* The POWER and PowerPC assemblers use a few macros.  We keep them
    with the operands table for simplicity.  The macro table is an
