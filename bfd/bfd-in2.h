@@ -2046,6 +2046,8 @@ enum bfd_architecture
 #define bfd_mach_ppc_e6500     5007
 #define bfd_mach_ppc_titan     83
 #define bfd_mach_ppc_vle       84
+/* unique random number */
+#define bfd_mach_ppc_nux       111
   bfd_arch_rs6000,    /* IBM RS/6000 */
 #define bfd_mach_rs6k          6000
 #define bfd_mach_rs6k_rs1      6001

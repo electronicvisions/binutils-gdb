@@ -63,6 +63,7 @@
 
 #include "features/rs6000/powerpc-32.c"
 #include "features/rs6000/powerpc-altivec32.c"
+#include "features/rs6000/powerpc-nux.c"
 #include "features/rs6000/powerpc-vsx32.c"
 #include "features/rs6000/powerpc-403.c"
 #include "features/rs6000/powerpc-403gc.c"
@@ -3055,6 +3056,8 @@ static struct variant variants[] =
    bfd_mach_ppc_7400, &tdesc_powerpc_7400},
   {"e500", "Motorola PowerPC e500", bfd_arch_powerpc,
    bfd_mach_ppc_e500, &tdesc_powerpc_e500},
+  {"nux", "Human Brain Project PowerPC Nux", bfd_arch_powerpc,
+   bfd_mach_ppc_nux, &tdesc_powerpc_nux},
 
   /* 64-bit */
   {"powerpc64", "PowerPC 64-bit user-level", bfd_arch_powerpc,
@@ -4373,6 +4376,7 @@ _initialize_rs6000_tdep (void)
   /* Initialize the standard target descriptions.  */
   initialize_tdesc_powerpc_32 ();
   initialize_tdesc_powerpc_altivec32 ();
+  initialize_tdesc_powerpc_nux ();
   initialize_tdesc_powerpc_vsx32 ();
   initialize_tdesc_powerpc_403 ();
   initialize_tdesc_powerpc_403gc ();

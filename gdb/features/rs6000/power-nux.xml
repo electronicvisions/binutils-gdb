@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<!-- Copyright (C) 2007-2014 Free Software Foundation, Inc.
+
+     Copying and distribution of this file, with or without modification,
+     are permitted in any medium without royalty provided the copyright
+     notice and this notice are preserved.  -->
+
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.power.nux">
+  <vector id="v8i16" type="int16" count="8"/>
+  <vector id="v16i8" type="int8" count="16"/>
+  <union id="vec128">
+    <field name="v8_int16" type="v8i16"/>
+    <field name="v16_int8" type="v16i8"/>
+  </union>
+  <vector id="v8i32" type="int32" count="8"/>
+  <vector id="v16i16" type="int16" count="16"/>
+  <union id="vec256">
+    <field name="v8_int32" type="v8i32"/>
+    <field name="v16_int16" type="v16i16"/>
+  </union>
+
+  <reg name="kc" bitsize="32" group="vector"/>
+
+  <reg name="kv0" bitsize="128" type="vec128"/>
+  <reg name="kv1" bitsize="128" type="vec128"/>
+  <reg name="kv2" bitsize="128" type="vec128"/>
+  <reg name="kv3" bitsize="128" type="vec128"/>
+  <reg name="kv4" bitsize="128" type="vec128"/>
+  <reg name="kv5" bitsize="128" type="vec128"/>
+  <reg name="kv6" bitsize="128" type="vec128"/>
+  <reg name="kv7" bitsize="128" type="vec128"/>
+  <reg name="kv8" bitsize="128" type="vec128"/>
+  <reg name="kv9" bitsize="128" type="vec128"/>
+  <reg name="kv10" bitsize="128" type="vec128"/>
+  <reg name="kv11" bitsize="128" type="vec128"/>
+  <reg name="kv12" bitsize="128" type="vec128"/>
+  <reg name="kv13" bitsize="128" type="vec128"/>
+  <reg name="kv14" bitsize="128" type="vec128"/>
+  <reg name="kv15" bitsize="128" type="vec128"/>
+  <reg name="kv16" bitsize="128" type="vec128"/>
+  <reg name="kv17" bitsize="128" type="vec128"/>
+  <reg name="kv18" bitsize="128" type="vec128"/>
+  <reg name="kv19" bitsize="128" type="vec128"/>
+  <reg name="kv20" bitsize="128" type="vec128"/>
+  <reg name="kv21" bitsize="128" type="vec128"/>
+  <reg name="kv22" bitsize="128" type="vec128"/>
+  <reg name="kv23" bitsize="128" type="vec128"/>
+  <reg name="kv24" bitsize="128" type="vec128"/>
+  <reg name="kv25" bitsize="128" type="vec128"/>
+  <reg name="kv26" bitsize="128" type="vec128"/>
+  <reg name="kv27" bitsize="128" type="vec128"/>
+  <reg name="kv28" bitsize="128" type="vec128"/>
+  <reg name="kv29" bitsize="128" type="vec128"/>
+  <reg name="kv30" bitsize="128" type="vec128"/>
+  <reg name="kv31" bitsize="128" type="vec128"/>
+
+  <reg name="ka" bitsize="256" type="vec256"/>
+</feature>

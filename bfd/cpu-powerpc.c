@@ -413,6 +413,22 @@ const bfd_arch_info_type bfd_powerpc_archs[] =
     powerpc_compatible,
     bfd_default_scan,
     bfd_arch_default_fill,
+    &bfd_powerpc_archs[22]
+  },
+  {
+    /* Nux architecture, copied from 32 bit powerpc:common at top */
+    32,	/* 32 bits in a word */
+    32,	/* 32 bits in an address */
+    8,	/* 8 bits in a byte */
+    bfd_arch_powerpc,
+    bfd_mach_ppc_nux, /* for the Nux architecture */
+    "powerpc",
+    "powerpc:nux",
+    3,
+    TRUE, /* default for 32 bit target */
+    powerpc_compatible,
+    bfd_default_scan,
+    bfd_arch_default_fill,
     0
   }
 };
