@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!-- Copyright (C) 2008-2014 Free Software Foundation, Inc.
+
+     Copying and distribution of this file, with or without modification,
+     are permitted in any medium without royalty provided the copyright
+     notice and this notice are preserved.  -->
+
+<!-- PowerPC Nux - a PPC processor as viewed by user-level code.
+     Includes s2pp vector registers.  -->
+
+<!DOCTYPE target SYSTEM "gdb-target.dtd">
+<target>
+  <architecture>powerpc:nux</architecture>
+  <xi:include href="power-core.xml"/>
+  <xi:include href="power-nux.xml"/>
+</target>

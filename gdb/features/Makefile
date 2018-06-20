@@ -62,6 +62,7 @@ WHICH = arm/arm-with-iwmmxt arm/arm-with-vfpv2 arm/arm-with-vfpv3 \
 	rs6000/powerpc-isa207-vsx32l rs6000/powerpc-isa207-vsx64l \
 	rs6000/powerpc-isa207-htm-vsx32l \
 	rs6000/powerpc-isa207-htm-vsx64l \
+	rs6000/powerpc-nux\
 	s390-linux32 s390-linux64 s390x-linux64 \
 	s390-linux32v1 s390-linux64v1 s390x-linux64v1 \
 	s390-linux32v2 s390-linux64v2 s390x-linux64v2 \
@@ -160,6 +161,7 @@ XMLTOC = \
 	rs6000/powerpc-vsx32l.xml \
 	rs6000/powerpc-vsx64.xml \
 	rs6000/powerpc-vsx64l.xml \
+	rs6000/powerpc-nux.xml \
 	rs6000/rs6000.xml \
 	s390-linux32.xml \
 	s390-linux32v1.xml \
