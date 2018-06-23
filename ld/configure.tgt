@@ -550,7 +550,7 @@ powerpc-*-vxworks*)
 powerpc*-*-elf* | powerpc*-*-eabi* | powerpc*-*-sysv* \
   | powerpc*-*-linux* | powerpc*-*-netbsd* | powerpc*-*-openbsd* \
   | powerpc*-*-rtems* \
-  | powerpc*-*-solaris* | powerpc*-*-kaos* | powerpc*-*-vxworks*)
+  | powerpc*-*-solaris* | powerpc*-*-kaos* | powerpc*-*-vxworks* | powerpc-*-ppu*)
 			case "${targ}" in
 			powerpc64*)
 			    targ_emul=elf64ppc
@@ -562,6 +562,9 @@ powerpc*-*-elf* | powerpc*-*-eabi* | powerpc*-*-sysv* \
 			    targ_extra_libpath=elf32ppc
 			    targ64_extra_emuls=elf64ppc
 			    targ64_extra_libpath=elf64ppc ;;
+			*ppu*)
+				targ_emul=elf32ppc
+				;;
 			*)
 			    targ_emul=elf32ppc
 			    targ_extra_emuls="elf32ppclinux elf32ppcsim"

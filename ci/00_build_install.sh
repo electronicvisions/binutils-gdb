@@ -1,7 +1,7 @@
 #!/bin/bash -x
 set -o errexit
 
-target="powerpc-eabi"
+target="powerpc-ppu"
 
 prefix="$PWD/install"
 
