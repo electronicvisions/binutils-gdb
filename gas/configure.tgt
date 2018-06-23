@@ -397,6 +397,7 @@ case ${generic_target} in
   ppc-*-nto*)				fmt=elf ;;
   ppc-*-kaos*)				fmt=elf ;;
   ppc-*-lynxos*)			fmt=elf em=lynx ;;
+  ppc-*-ppu*)				fmt=elf ;;
 
   pru-*-*)				fmt=elf ;;
 
