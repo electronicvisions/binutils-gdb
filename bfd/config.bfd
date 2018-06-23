@@ -1287,6 +1287,10 @@ case "${targ}" in
     targ_selvecs="rs6000_xcoff_vec"
     targ_cflags=-DSMALL_ARCHIVE
     ;;
+  powerpc-*-ppu*)
+    targ_defvec=powerpc_elf32_vec
+    targ_selvecs="rs6000_xcoff_vec"
+    ;;
   powerpc-*-netware*)
     targ_defvec=powerpc_elf32_vec
     targ_selvecs="powerpc_nlm32_vec rs6000_xcoff_vec"
