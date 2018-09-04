@@ -6,23 +6,29 @@ node {
 		cleanWs()
 
 		stage('Checkout') {
-			withWaf() {
-				try {
-					sh "waf setup " +
-					   "--project binutils-gdb@binutils-2_25-branch-nux " +
-					   "--clone-depth 1 " +
-					   "--gerrit-changes=${GERRIT_CHANGE_NUMBER} " +
-					   "--gerrit-url=ssh://hudson@$GERRIT_HOST:$GERRIT_PORT"
-				} catch (MissingPropertyException ignored) {     // Jenkinsfile not called via Gerrit
-					sh "waf setup " +
-					   "--project binutils-gdb@binutils-2_25-branch-nux " +
-					   "--clone-depth 1"
+			inSingularity() {
+				withWaf() {
+					try {
+						sish "waf setup " +
+						     "--project binutils-gdb@binutils-2_25-branch-nux " +
+						     "--clone-depth 1 " +
+						     "--gerrit-changes=${GERRIT_CHANGE_NUMBER} " +
+						     "--gerrit-url=ssh://hudson@$GERRIT_HOST:$GERRIT_PORT"
+					} catch (MissingPropertyException ignored) {     // Jenkinsfile not called via Gerrit
+						sish "waf setup " +
+						     "--project binutils-gdb@binutils-2_25-branch-nux " +
+						     "--clone-depth 1"
+					}
 				}
 			}
 		}
 
 		stage("Build") {
-			srun_with_container("bash binutils-gdb/ci/00_build_install.sh")
+			onSlurmResource(partition: "jenkins", "cpus-per-task": "8") {
+				inSingularity(app: "visionary-dls") {
+					sish "bash binutils-gdb/ci/00_build_install.sh"
+				}
+			}
 		}
 
 	} catch (Exception e) {
@@ -41,11 +47,6 @@ node {
 /*
 /* HELPER FUNCTIONS
 */
-
-void srun_with_container(String command) {
-	sh "srun -p jenkins -c8 --mem=29G -- singularity exec --app visionary-defaults " +
-	   "/containers/jenkins/softies_darling ${command}"
-}
 
 void post_all_build_action() {
 	// Always clean the workspace
