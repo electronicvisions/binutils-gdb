@@ -4745,8 +4745,8 @@ const struct powerpc_opcode powerpc_opcodes[] = {
 {"fxvaddbm",       FXV(4,  461), FXV_MASK, PPCS2PP, 0, {FXVRT, FXVRA,  FXVRB,  FXVCOND}},
 {"fxvaddhfs",      FXV(4,  476), FXV_MASK, PPCS2PP, 0, {FXVRT, FXVRA,  FXVRB,  FXVCOND}},
 {"fxvaddbfs",      FXV(4,  477), FXV_MASK, PPCS2PP, 0, {FXVRT, FXVRA,  FXVRB,  FXVCOND}},
-{"fxvlax",         FXV(4,  492), FXV_MASK, PPCS2PP, 0, {FXVRT, RA0,    RB,     FXVCOND}},
-{"fxvstax",        FXV(4,  508), FXV_MASK, PPCS2PP, 0, {FXVRT, RA0,    RB,     FXVCOND}},
+{"fxvlax",         FXV(4,  492), FXV_MASK, PPCS2PP, 0, {FXVRT, RA0,    RB             }},
+{"fxvstax",        FXV(4,  508), FXV_MASK, PPCS2PP, 0, {FXVRT, RA0,    RB             }},
 
 {"mulli",	OP(7),		OP_MASK,     PPCCOM,	PPCVLE,		{RT, RA, SI}},
 {"muli",	OP(7),		OP_MASK,     PWRCOM,	PPCVLE,		{RT, RA, SI}},
