@@ -1,6 +1,6 @@
 /* Handle set and show GDB commands.
 
-   Copyright (C) 2000-2019 Free Software Foundation, Inc.
+   Copyright (C) 2000-2020 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -130,8 +130,9 @@ deprecated_show_value_hack (struct ui_file *ignore_file,
   /* If there's no command or value, don't try to print it out.  */
   if (c == NULL || value == NULL)
     return;
-  /* Print doc minus "show" at start.  */
-  print_doc_line (gdb_stdout, c->doc + 5);
+  /* Print doc minus "Show " at start.  Tell print_doc_line that
+     this is for a 'show value' prefix.  */
+  print_doc_line (gdb_stdout, c->doc + 5, true);
   switch (c->var_type)
     {
     case var_string:
@@ -415,9 +416,9 @@ do_set_command (const char *arg, int from_tty, struct cmd_list_element *c)
 
 	if (val < 0)
 	  error (_("\"on\" or \"off\" expected."));
-	if (val != *(int *) c->var)
+	if (val != *(bool *) c->var)
 	  {
-	    *(int *) c->var = val;
+	    *(bool *) c->var = val;
 
 	    option_changed = 1;
 	  }
@@ -587,7 +588,7 @@ do_set_command (const char *arg, int from_tty, struct cmd_list_element *c)
 	  break;
 	case var_boolean:
 	  {
-	    const char *opt = *(int *) c->var ? "on" : "off";
+	    const char *opt = *(bool *) c->var ? "on" : "off";
 
 	    gdb::observers::command_param_changed.notify (name, opt);
 	  }
@@ -626,7 +627,7 @@ do_set_command (const char *arg, int from_tty, struct cmd_list_element *c)
 /* See cli/cli-setshow.h.  */
 
 std::string
-get_setshow_command_value_string (cmd_list_element *c)
+get_setshow_command_value_string (const cmd_list_element *c)
 {
   string_file stb;
 
@@ -644,7 +645,7 @@ get_setshow_command_value_string (cmd_list_element *c)
 	stb.puts (*(char **) c->var);
       break;
     case var_boolean:
-      stb.puts (*(int *) c->var ? "on" : "off");
+      stb.puts (*(bool *) c->var ? "on" : "off");
       break;
     case var_auto_boolean:
       switch (*(enum auto_boolean*) c->var)
@@ -732,39 +733,45 @@ do_show_command (const char *arg, int from_tty, struct cmd_list_element *c)
 /* Show all the settings in a list of show commands.  */
 
 void
-cmd_show_list (struct cmd_list_element *list, int from_tty, const char *prefix)
+cmd_show_list (struct cmd_list_element *list, int from_tty)
 {
   struct ui_out *uiout = current_uiout;
 
   ui_out_emit_tuple tuple_emitter (uiout, "showlist");
   for (; list != NULL; list = list->next)
     {
+      /* We skip show command aliases to avoid showing duplicated values.  */
+
       /* If we find a prefix, run its list, prefixing our output by its
          prefix (with "show " skipped).  */
-      if (list->prefixlist && !list->abbrev_flag)
+      if (list->prefixlist && list->cmd_pointer == nullptr)
 	{
 	  ui_out_emit_tuple optionlist_emitter (uiout, "optionlist");
 	  const char *new_prefix = strstr (list->prefixname, "show ") + 5;
 
 	  if (uiout->is_mi_like_p ())
 	    uiout->field_string ("prefix", new_prefix);
-	  cmd_show_list (*list->prefixlist, from_tty, new_prefix);
+	  cmd_show_list (*list->prefixlist, from_tty);
 	}
-      else
+      else if (list->theclass != no_set_class && list->cmd_pointer == nullptr)
 	{
-	  if (list->theclass != no_set_class)
-	    {
-	      ui_out_emit_tuple option_emitter (uiout, "option");
+	  ui_out_emit_tuple option_emitter (uiout, "option");
 
-	      uiout->text (prefix);
-	      uiout->field_string ("name", list->name);
-	      uiout->text (":  ");
-	      if (list->type == show_cmd)
-		do_show_command (NULL, from_tty, list);
-	      else
-		cmd_func (list, NULL, from_tty);
-	    }
+	  {
+	    /* If we find a prefix, output it (with "show " skipped).  */
+	    const char *prefixname
+	      = (list->prefix == nullptr ? ""
+		 : strstr (list->prefix->prefixname, "show ") + 5);
+	    uiout->text (prefixname);
+	  }
+	  uiout->field_string ("name", list->name);
+	  uiout->text (":  ");
+	  if (list->type == show_cmd)
+	    do_show_command (NULL, from_tty, list);
+	  else
+	    cmd_func (list, NULL, from_tty);
 	}
     }
 }
+
 

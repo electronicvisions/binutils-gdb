@@ -1,6 +1,6 @@
 /* Target description support for GDB.
 
-   Copyright (C) 2006-2019 Free Software Foundation, Inc.
+   Copyright (C) 2006-2020 Free Software Foundation, Inc.
 
    Contributed by CodeSourcery.
 
@@ -26,7 +26,6 @@
 #include "reggroups.h"
 #include "target.h"
 #include "target-descriptions.h"
-#include "gdbsupport/vec.h"
 #include "xml-support.h"
 #include "xml-tdesc.h"
 #include "osabi.h"
@@ -157,7 +156,7 @@ make_gdb_type (struct gdbarch *gdbarch, struct tdesc_type *ttype)
 
       type *element_gdb_type = make_gdb_type (m_gdbarch, e->element_type);
       m_type = init_vector_type (element_gdb_type, e->count);
-      TYPE_NAME (m_type) = xstrdup (e->name.c_str ());
+      m_type->set_name (xstrdup (e->name.c_str ()));
       return;
     }
 
@@ -193,7 +192,7 @@ make_gdb_type (struct gdbarch *gdbarch, struct tdesc_type *ttype)
     void make_gdb_type_struct (const tdesc_type_with_fields *e)
     {
       m_type = arch_composite_type (m_gdbarch, NULL, TYPE_CODE_STRUCT);
-      TYPE_NAME (m_type) = xstrdup (e->name.c_str ());
+      m_type->set_name (xstrdup (e->name.c_str ()));
 
       for (const tdesc_type_field &f : e->fields)
 	{
@@ -225,7 +224,7 @@ make_gdb_type (struct gdbarch *gdbarch, struct tdesc_type *ttype)
 		 the total size of the structure.  */
 	      bitsize = f.end - f.start + 1;
 	      total_size = e->size * TARGET_CHAR_BIT;
-	      if (gdbarch_bits_big_endian (m_gdbarch))
+	      if (gdbarch_byte_order (m_gdbarch) == BFD_ENDIAN_BIG)
 		SET_FIELD_BITPOS (fld[0], total_size - f.start - bitsize);
 	      else
 		SET_FIELD_BITPOS (fld[0], f.start);
@@ -248,7 +247,7 @@ make_gdb_type (struct gdbarch *gdbarch, struct tdesc_type *ttype)
     void make_gdb_type_union (const tdesc_type_with_fields *e)
     {
       m_type = arch_composite_type (m_gdbarch, NULL, TYPE_CODE_UNION);
-      TYPE_NAME (m_type) = xstrdup (e->name.c_str ());
+      m_type->set_name (xstrdup (e->name.c_str ()));
 
       for (const tdesc_type_field &f : e->fields)
 	{
@@ -1219,24 +1218,6 @@ static struct cmd_list_element *tdesc_unset_cmdlist;
 /* Helper functions for the CLI commands.  */
 
 static void
-set_tdesc_cmd (const char *args, int from_tty)
-{
-  help_list (tdesc_set_cmdlist, "set tdesc ", all_commands, gdb_stdout);
-}
-
-static void
-show_tdesc_cmd (const char *args, int from_tty)
-{
-  cmd_show_list (tdesc_show_cmdlist, from_tty, "");
-}
-
-static void
-unset_tdesc_cmd (const char *args, int from_tty)
-{
-  help_list (tdesc_unset_cmdlist, "unset tdesc ", all_commands, gdb_stdout);
-}
-
-static void
 set_tdesc_filename_cmd (const char *args, int from_tty,
 			struct cmd_list_element *c)
 {
@@ -1716,7 +1697,8 @@ maint_print_c_tdesc_cmd (const char *args, int from_tty)
       || startswith (filename_after_features.c_str (), "riscv/")
       || startswith (filename_after_features.c_str (), "tic6x-")
       || startswith (filename_after_features.c_str (), "aarch64")
-      || startswith (filename_after_features.c_str (), "arm/"))
+      || startswith (filename_after_features.c_str (), "arm/")
+      || startswith (filename_after_features.c_str (), "arc/"))
     {
       print_c_feature v (filename_after_features);
 
@@ -1748,7 +1730,7 @@ static std::vector<xml_test_tdesc> xml_tdesc;
 
 #if GDB_SELF_TEST
 
-/* See target-descritpions.h.  */
+/* See target-descriptions.h.  */
 
 void
 record_xml_tdesc (const char *xml_file, const struct target_desc *tdesc)
@@ -1759,7 +1741,7 @@ record_xml_tdesc (const char *xml_file, const struct target_desc *tdesc)
 
 }
 
-/* Test the convesion process of a target description to/from xml: Take a target
+/* Test the conversion process of a target description to/from xml: Take a target
    description TDESC, convert to xml, back to a description, and confirm the new
    tdesc is identical to the original.  */
 static bool
@@ -1825,29 +1807,30 @@ maintenance_check_xml_descriptions (const char *dir, int from_tty)
 		   (long) selftests::xml_tdesc.size (), failed);
 }
 
+void _initialize_target_descriptions ();
 void
-_initialize_target_descriptions (void)
+_initialize_target_descriptions ()
 {
   tdesc_data = gdbarch_data_register_pre_init (tdesc_data_init);
 
-  add_prefix_cmd ("tdesc", class_maintenance, set_tdesc_cmd, _("\
+  add_basic_prefix_cmd ("tdesc", class_maintenance, _("\
 Set target description specific variables."),
-		  &tdesc_set_cmdlist, "set tdesc ",
-		  0 /* allow-unknown */, &setlist);
-  add_prefix_cmd ("tdesc", class_maintenance, show_tdesc_cmd, _("\
+			&tdesc_set_cmdlist, "set tdesc ",
+			0 /* allow-unknown */, &setlist);
+  add_show_prefix_cmd ("tdesc", class_maintenance, _("\
 Show target description specific variables."),
-		  &tdesc_show_cmdlist, "show tdesc ",
-		  0 /* allow-unknown */, &showlist);
-  add_prefix_cmd ("tdesc", class_maintenance, unset_tdesc_cmd, _("\
+		       &tdesc_show_cmdlist, "show tdesc ",
+		       0 /* allow-unknown */, &showlist);
+  add_basic_prefix_cmd ("tdesc", class_maintenance, _("\
 Unset target description specific variables."),
-		  &tdesc_unset_cmdlist, "unset tdesc ",
-		  0 /* allow-unknown */, &unsetlist);
+			&tdesc_unset_cmdlist, "unset tdesc ",
+			0 /* allow-unknown */, &unsetlist);
 
   add_setshow_filename_cmd ("filename", class_obscure,
 			    &tdesc_filename_cmd_string,
 			    _("\
-Set the file to read for an XML target description"), _("\
-Show the file to read for an XML target description"), _("\
+Set the file to read for an XML target description."), _("\
+Show the file to read for an XML target description."), _("\
 When set, GDB will read the target description from a local\n\
 file instead of querying the remote target."),
 			    set_tdesc_filename_cmd,
@@ -1855,8 +1838,8 @@ file instead of querying the remote target."),
 			    &tdesc_set_cmdlist, &tdesc_show_cmdlist);
 
   add_cmd ("filename", class_obscure, unset_tdesc_filename_cmd, _("\
-Unset the file to read for an XML target description.  When unset,\n\
-GDB will read the description from the target."),
+Unset the file to read for an XML target description.\n\
+When unset, GDB will read the description from the target."),
 	   &tdesc_unset_cmdlist);
 
   add_cmd ("c-tdesc", class_maintenance, maint_print_c_tdesc_cmd, _("\
@@ -1867,6 +1850,7 @@ Print the current target description as a C source file."),
 
   cmd = add_cmd ("xml-descriptions", class_maintenance,
 		 maintenance_check_xml_descriptions, _("\
+Check equality of GDB target descriptions and XML created descriptions.\n\
 Check the target descriptions created in GDB equal the descriptions\n\
 created from XML files in the directory.\n\
 The parameter is the directory name."),

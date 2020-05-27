@@ -1,6 +1,6 @@
 /* Target-dependent code for the RISC-V architecture, for GDB.
 
-   Copyright (C) 2018-2019 Free Software Foundation, Inc.
+   Copyright (C) 2018-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -47,7 +47,7 @@
 #include "floatformat.h"
 #include "remote.h"
 #include "target-descriptions.h"
-#include "dwarf2-frame.h"
+#include "dwarf2/frame.h"
 #include "user-regs.h"
 #include "valprint.h"
 #include "gdbsupport/common-defs.h"
@@ -56,6 +56,7 @@
 #include "observable.h"
 #include "prologue-value.h"
 #include "arch/riscv.h"
+#include "riscv-ravenscar-thread.h"
 
 /* The stack must be 16-byte aligned.  */
 #define SP_ALIGNMENT 16
@@ -239,7 +240,7 @@ static struct riscv_register_feature riscv_csr_feature =
 {
  "org.gnu.gdb.riscv.csr",
  {
-#define DECLARE_CSR(NAME,VALUE) \
+#define DECLARE_CSR(NAME,VALUE,CLASS,DEFINE_VER,ABORT_VER) \
   { RISCV_ ## VALUE ## _REGNUM, { # NAME }, false },
 #include "opcode/riscv-opc.h"
 #undef DECLARE_CSR
@@ -283,46 +284,10 @@ show_use_compressed_breakpoints (struct ui_file *file, int from_tty,
 static struct cmd_list_element *setriscvcmdlist = NULL;
 static struct cmd_list_element *showriscvcmdlist = NULL;
 
-/* The show callback for the 'show riscv' prefix command.  */
-
-static void
-show_riscv_command (const char *args, int from_tty)
-{
-  help_list (showriscvcmdlist, "show riscv ", all_commands, gdb_stdout);
-}
-
-/* The set callback for the 'set riscv' prefix command.  */
-
-static void
-set_riscv_command (const char *args, int from_tty)
-{
-  printf_unfiltered
-    (_("\"set riscv\" must be followed by an appropriate subcommand.\n"));
-  help_list (setriscvcmdlist, "set riscv ", all_commands, gdb_stdout);
-}
-
 /* The set and show lists for 'set riscv' and 'show riscv' prefixes.  */
 
 static struct cmd_list_element *setdebugriscvcmdlist = NULL;
 static struct cmd_list_element *showdebugriscvcmdlist = NULL;
-
-/* The show callback for the 'show debug riscv' prefix command.  */
-
-static void
-show_debug_riscv_command (const char *args, int from_tty)
-{
-  help_list (showdebugriscvcmdlist, "show debug riscv ", all_commands, gdb_stdout);
-}
-
-/* The set callback for the 'set debug riscv' prefix command.  */
-
-static void
-set_debug_riscv_command (const char *args, int from_tty)
-{
-  printf_unfiltered
-    (_("\"set debug riscv\" must be followed by an appropriate subcommand.\n"));
-  help_list (setdebugriscvcmdlist, "set debug riscv ", all_commands, gdb_stdout);
-}
 
 /* The show callback for all 'show debug riscv VARNAME' variables.  */
 
@@ -533,7 +498,7 @@ riscv_register_name (struct gdbarch *gdbarch, int regnum)
 
   if (regnum >= RISCV_FIRST_CSR_REGNUM && regnum <= RISCV_LAST_CSR_REGNUM)
     {
-#define DECLARE_CSR(NAME,VALUE) \
+#define DECLARE_CSR(NAME,VALUE,CLASS,DEFINE_VER,ABORT_VER) \
       case RISCV_ ## VALUE ## _REGNUM: return # NAME;
 
       switch (regnum)
@@ -579,7 +544,7 @@ riscv_fpreg_d_type (struct gdbarch *gdbarch)
       append_composite_type_field (t, "float", bt->builtin_float);
       append_composite_type_field (t, "double", bt->builtin_double);
       TYPE_VECTOR (t) = 1;
-      TYPE_NAME (t) = "builtin_type_fpreg_d";
+      t->set_name ("builtin_type_fpreg_d");
       tdep->riscv_fpreg_d_type = t;
     }
 
@@ -609,10 +574,10 @@ riscv_register_type (struct gdbarch *gdbarch, int regnum)
          present the registers using a union type.  */
       int flen = riscv_isa_flen (gdbarch);
       if (flen == 8
-          && TYPE_CODE (type) == TYPE_CODE_FLT
+          && type->code () == TYPE_CODE_FLT
           && TYPE_LENGTH (type) == flen
-          && (strcmp (TYPE_NAME (type), "builtin_type_ieee_double") == 0
-              || strcmp (TYPE_NAME (type), "double") == 0))
+          && (strcmp (type->name (), "builtin_type_ieee_double") == 0
+              || strcmp (type->name (), "double") == 0))
         type = riscv_fpreg_d_type (gdbarch);
     }
 
@@ -622,7 +587,7 @@ riscv_register_type (struct gdbarch *gdbarch, int regnum)
        || regnum == RISCV_SP_REGNUM
        || regnum == RISCV_GP_REGNUM
        || regnum == RISCV_TP_REGNUM)
-      && TYPE_CODE (type) == TYPE_CODE_INT
+      && type->code () == TYPE_CODE_INT
       && TYPE_LENGTH (type) == xlen)
     {
       /* This spots the case where some interesting registers are defined
@@ -675,27 +640,25 @@ riscv_print_one_register_info (struct gdbarch *gdbarch,
   print_raw_format = (value_entirely_available (val)
 		      && !value_optimized_out (val));
 
-  if (TYPE_CODE (regtype) == TYPE_CODE_FLT
-      || (TYPE_CODE (regtype) == TYPE_CODE_UNION
-	  && TYPE_NFIELDS (regtype) == 2
-	  && TYPE_CODE (TYPE_FIELD_TYPE (regtype, 0)) == TYPE_CODE_FLT
-	  && TYPE_CODE (TYPE_FIELD_TYPE (regtype, 1)) == TYPE_CODE_FLT)
-      || (TYPE_CODE (regtype) == TYPE_CODE_UNION
-	  && TYPE_NFIELDS (regtype) == 3
-	  && TYPE_CODE (TYPE_FIELD_TYPE (regtype, 0)) == TYPE_CODE_FLT
-	  && TYPE_CODE (TYPE_FIELD_TYPE (regtype, 1)) == TYPE_CODE_FLT
-	  && TYPE_CODE (TYPE_FIELD_TYPE (regtype, 2)) == TYPE_CODE_FLT))
+  if (regtype->code () == TYPE_CODE_FLT
+      || (regtype->code () == TYPE_CODE_UNION
+	  && regtype->num_fields () == 2
+	  && TYPE_FIELD_TYPE (regtype, 0)->code () == TYPE_CODE_FLT
+	  && TYPE_FIELD_TYPE (regtype, 1)->code () == TYPE_CODE_FLT)
+      || (regtype->code () == TYPE_CODE_UNION
+	  && regtype->num_fields () == 3
+	  && TYPE_FIELD_TYPE (regtype, 0)->code () == TYPE_CODE_FLT
+	  && TYPE_FIELD_TYPE (regtype, 1)->code () == TYPE_CODE_FLT
+	  && TYPE_FIELD_TYPE (regtype, 2)->code () == TYPE_CODE_FLT))
     {
       struct value_print_options opts;
       const gdb_byte *valaddr = value_contents_for_printing (val);
-      enum bfd_endian byte_order = gdbarch_byte_order (get_type_arch (regtype));
+      enum bfd_endian byte_order = type_byte_order (regtype);
 
       get_user_print_options (&opts);
       opts.deref_ref = 1;
 
-      val_print (regtype,
-		 value_embedded_offset (val), 0,
-		 file, 0, val, &opts, current_language);
+      common_val_print (val, file, 0, &opts, current_language);
 
       if (print_raw_format)
 	{
@@ -712,9 +675,7 @@ riscv_print_one_register_info (struct gdbarch *gdbarch,
       /* Print the register in hex.  */
       get_formatted_print_options (&opts, 'x');
       opts.deref_ref = 1;
-      val_print (regtype,
-		 value_embedded_offset (val), 0,
-		 file, 0, val, &opts, current_language);
+      common_val_print (val, file, 0, &opts, current_language);
 
       if (print_raw_format)
 	{
@@ -848,9 +809,7 @@ riscv_print_one_register_info (struct gdbarch *gdbarch,
 		  get_user_print_options (&opts);
 		  opts.deref_ref = 1;
 		  fprintf_filtered (file, "\t");
-		  val_print (regtype,
-			     value_embedded_offset (val), 0,
-			     file, 0, val, &opts, current_language);
+		  common_val_print (val, file, 0, &opts, current_language);
 		}
 	    }
 	}
@@ -869,7 +828,7 @@ riscv_is_regnum_a_named_csr (int regnum)
 
   switch (regnum)
     {
-#define DECLARE_CSR(name, num) case RISCV_ ## num ## _REGNUM:
+#define DECLARE_CSR(name, num, class, define_ver, abort_ver) case RISCV_ ## num ## _REGNUM:
 #include "opcode/riscv-opc.h"
 #undef DECLARE_CSR
       return true;
@@ -1010,7 +969,7 @@ public:
       LUI,
       SD,
       SW,
-      /* These are needed for software breakopint support.  */
+      /* These are needed for software breakpoint support.  */
       JAL,
       JALR,
       BEQ,
@@ -1654,8 +1613,8 @@ riscv_push_dummy_code (struct gdbarch *gdbarch, CORE_ADDR sp,
 
   if (riscv_debug_breakpoints || riscv_debug_infcall)
     fprintf_unfiltered (gdb_stdlog,
-			"Writing %lld-byte nop instruction to %s: %s\n",
-			((unsigned long long) sizeof (nop_insn)),
+			"Writing %s-byte nop instruction to %s: %s\n",
+			plongest (sizeof (nop_insn)),
 			paddress (gdbarch, *bp_addr),
 			(status == 0 ? "success" : "failed"));
 
@@ -1669,7 +1628,7 @@ static ULONGEST
 riscv_type_align (gdbarch *gdbarch, type *type)
 {
   type = check_typedef (type);
-  if (TYPE_CODE (type) == TYPE_CODE_ARRAY && TYPE_VECTOR (type))
+  if (type->code () == TYPE_CODE_ARRAY && TYPE_VECTOR (type))
     return std::min (TYPE_LENGTH (type), (ULONGEST) BIGGEST_ALIGNMENT);
 
   /* Anything else will be aligned by the generic code.  */
@@ -1732,8 +1691,9 @@ struct riscv_arg_info
        will go.  */
     int c_length;
 
-    /* The offset within CONTENTS for this part of the argument.  Will
-       always be 0 for the first part.  For the second part of the
+    /* The offset within CONTENTS for this part of the argument.  This can
+       be non-zero even for the first part (the first field of a struct can
+       have a non-zero offset due to padding).  For the second part of the
        argument, this might be the C_LENGTH value of the first part,
        however, if we are passing a structure in two registers, and there's
        is padding between the first and second field, then this offset
@@ -2084,7 +2044,7 @@ private:
 void
 riscv_struct_info::analyse_inner (struct type *type, int offset)
 {
-  unsigned int count = TYPE_NFIELDS (type);
+  unsigned int count = type->num_fields ();
   unsigned int i;
 
   for (i = 0; i < count; ++i)
@@ -2097,7 +2057,7 @@ riscv_struct_info::analyse_inner (struct type *type, int offset)
       int field_offset
 	= offset + TYPE_FIELD_BITPOS (type, i) / TARGET_CHAR_BIT;
 
-      switch (TYPE_CODE (field_type))
+      switch (field_type->code ())
 	{
 	case TYPE_CODE_STRUCT:
 	  analyse_inner (field_type, field_offset);
@@ -2144,7 +2104,7 @@ riscv_call_arg_struct (struct riscv_arg_info *ainfo,
 
       sinfo.analyse (ainfo->type);
       if (sinfo.number_of_fields () == 1
-	  && TYPE_CODE (sinfo.field_type (0)) == TYPE_CODE_COMPLEX)
+	  && sinfo.field_type(0)->code () == TYPE_CODE_COMPLEX)
 	{
 	  /* The following is similar to RISCV_CALL_ARG_COMPLEX_FLOAT,
 	     except we use the type of the complex field instead of the
@@ -2174,7 +2134,7 @@ riscv_call_arg_struct (struct riscv_arg_info *ainfo,
 	}
 
       if (sinfo.number_of_fields () == 1
-	  && TYPE_CODE (sinfo.field_type (0)) == TYPE_CODE_FLT)
+	  && sinfo.field_type(0)->code () == TYPE_CODE_FLT)
 	{
 	  /* The following is similar to RISCV_CALL_ARG_SCALAR_FLOAT,
 	     except we use the type of the first scalar field instead of
@@ -2197,9 +2157,9 @@ riscv_call_arg_struct (struct riscv_arg_info *ainfo,
 	}
 
       if (sinfo.number_of_fields () == 2
-	  && TYPE_CODE (sinfo.field_type (0)) == TYPE_CODE_FLT
+	  && sinfo.field_type(0)->code () == TYPE_CODE_FLT
 	  && TYPE_LENGTH (sinfo.field_type (0)) <= cinfo->flen
-	  && TYPE_CODE (sinfo.field_type (1)) == TYPE_CODE_FLT
+	  && sinfo.field_type(1)->code () == TYPE_CODE_FLT
 	  && TYPE_LENGTH (sinfo.field_type (1)) <= cinfo->flen
 	  && riscv_arg_regs_available (&cinfo->float_regs) >= 2)
 	{
@@ -2223,7 +2183,7 @@ riscv_call_arg_struct (struct riscv_arg_info *ainfo,
 
       if (sinfo.number_of_fields () == 2
 	  && riscv_arg_regs_available (&cinfo->int_regs) >= 1
-	  && (TYPE_CODE (sinfo.field_type (0)) == TYPE_CODE_FLT
+	  && (sinfo.field_type(0)->code () == TYPE_CODE_FLT
 	      && TYPE_LENGTH (sinfo.field_type (0)) <= cinfo->flen
 	      && is_integral_type (sinfo.field_type (1))
 	      && TYPE_LENGTH (sinfo.field_type (1)) <= cinfo->xlen))
@@ -2247,7 +2207,7 @@ riscv_call_arg_struct (struct riscv_arg_info *ainfo,
 	  && riscv_arg_regs_available (&cinfo->int_regs) >= 1
 	  && (is_integral_type (sinfo.field_type (0))
 	      && TYPE_LENGTH (sinfo.field_type (0)) <= cinfo->xlen
-	      && TYPE_CODE (sinfo.field_type (1)) == TYPE_CODE_FLT
+	      && sinfo.field_type(1)->code () == TYPE_CODE_FLT
 	      && TYPE_LENGTH (sinfo.field_type (1)) <= cinfo->flen))
 	{
 	  int len0 = TYPE_LENGTH (sinfo.field_type (0));
@@ -2300,7 +2260,7 @@ riscv_arg_location (struct gdbarch *gdbarch,
   ainfo->argloc[0].c_length = 0;
   ainfo->argloc[1].c_length = 0;
 
-  switch (TYPE_CODE (ainfo->type))
+  switch (ainfo->type->code ())
     {
     case TYPE_CODE_INT:
     case TYPE_CODE_BOOL:
@@ -2422,6 +2382,26 @@ riscv_print_arg_location (ui_file *stream, struct gdbarch *gdbarch,
     }
 }
 
+/* Wrapper around REGCACHE->cooked_write.  Places the LEN bytes of DATA
+   into a buffer that is at least as big as the register REGNUM, padding
+   out the DATA with either 0x00, or 0xff.  For floating point registers
+   0xff is used, for everyone else 0x00 is used.  */
+
+static void
+riscv_regcache_cooked_write (int regnum, const gdb_byte *data, int len,
+			     struct regcache *regcache, int flen)
+{
+  gdb_byte tmp [sizeof (ULONGEST)];
+
+  /* FP values in FP registers must be NaN-boxed.  */
+  if (riscv_is_fp_regno_p (regnum) && len < flen)
+    memset (tmp, -1, sizeof (tmp));
+  else
+    memset (tmp, 0, sizeof (tmp));
+  memcpy (tmp, data, len);
+  regcache->cooked_write (regnum, tmp);
+}
+
 /* Implement the push dummy call gdbarch callback.  */
 
 static CORE_ADDR
@@ -2448,7 +2428,7 @@ riscv_push_dummy_call (struct gdbarch *gdbarch,
 
   struct type *ftype = check_typedef (value_type (function));
 
-  if (TYPE_CODE (ftype) == TYPE_CODE_PTR)
+  if (ftype->code () == TYPE_CODE_PTR)
     ftype = check_typedef (TYPE_TARGET_TYPE (ftype));
 
   /* We'll use register $a0 if we're returning a struct.  */
@@ -2465,7 +2445,7 @@ riscv_push_dummy_call (struct gdbarch *gdbarch,
       arg_type = check_typedef (value_type (arg_value));
 
       riscv_arg_location (gdbarch, info, &call_info, arg_type,
-			  TYPE_VARARGS (ftype) && i >= TYPE_NFIELDS (ftype));
+			  TYPE_VARARGS (ftype) && i >= ftype->num_fields ());
 
       if (info->type != arg_type)
 	arg_value = value_cast (info->type, arg_value);
@@ -2531,18 +2511,13 @@ riscv_push_dummy_call (struct gdbarch *gdbarch,
 	{
 	case riscv_arg_info::location::in_reg:
 	  {
-	    gdb_byte tmp [sizeof (ULONGEST)];
-
 	    gdb_assert (info->argloc[0].c_length <= info->length);
-	    /* FP values in FP registers must be NaN-boxed.  */
-	    if (riscv_is_fp_regno_p (info->argloc[0].loc_data.regno)
-		&& info->argloc[0].c_length < call_info.flen)
-	      memset (tmp, -1, sizeof (tmp));
-	    else
-	      memset (tmp, 0, sizeof (tmp));
-	    memcpy (tmp, (info->contents + info->argloc[0].c_offset),
-		    info->argloc[0].c_length);
-	    regcache->cooked_write (info->argloc[0].loc_data.regno, tmp);
+
+	    riscv_regcache_cooked_write (info->argloc[0].loc_data.regno,
+					 (info->contents
+					  + info->argloc[0].c_offset),
+					 info->argloc[0].c_length,
+					 regcache, call_info.flen);
 	    second_arg_length =
 	      (((info->argloc[0].c_length + info->argloc[0].c_offset) < info->length)
 	       ? info->argloc[1].c_length : 0);
@@ -2574,19 +2549,13 @@ riscv_push_dummy_call (struct gdbarch *gdbarch,
 	    {
 	    case riscv_arg_info::location::in_reg:
 	      {
-		gdb_byte tmp [sizeof (ULONGEST)];
-
 		gdb_assert ((riscv_is_fp_regno_p (info->argloc[1].loc_data.regno)
 			     && second_arg_length <= call_info.flen)
 			    || second_arg_length <= call_info.xlen);
-		/* FP values in FP registers must be NaN-boxed.  */
-		if (riscv_is_fp_regno_p (info->argloc[1].loc_data.regno)
-		    && second_arg_length < call_info.flen)
-		  memset (tmp, -1, sizeof (tmp));
-		else
-		  memset (tmp, 0, sizeof (tmp));
-		memcpy (tmp, second_arg_data, second_arg_length);
-		regcache->cooked_write (info->argloc[1].loc_data.regno, tmp);
+		riscv_regcache_cooked_write (info->argloc[1].loc_data.regno,
+					     second_arg_data,
+					     second_arg_length,
+					     regcache, call_info.flen);
 	      }
 	      break;
 
@@ -2706,9 +2675,9 @@ riscv_return_value (struct gdbarch  *gdbarch,
 	      if (writebuf)
 		{
 		  const gdb_byte *ptr = writebuf + info.argloc[0].c_offset;
-		  regcache->cooked_write_part (regnum, 0,
+		  riscv_regcache_cooked_write (regnum, ptr,
 					       info.argloc[0].c_length,
-					       ptr);
+					       regcache, call_info.flen);
 		}
 
 	      /* A return value in register can have a second part in a
@@ -2735,10 +2704,11 @@ riscv_return_value (struct gdbarch  *gdbarch,
 
 		      if (writebuf)
 			{
-			  writebuf += info.argloc[1].c_offset;
-			  regcache->cooked_write_part (regnum, 0,
-						       info.argloc[1].c_length,
-						       writebuf);
+			  const gdb_byte *ptr
+			    = writebuf + info.argloc[1].c_offset;
+			  riscv_regcache_cooked_write
+			    (regnum, ptr, info.argloc[1].c_length,
+			     regcache, call_info.flen);
 			}
 		      break;
 
@@ -2972,7 +2942,7 @@ riscv_find_default_target_description (const struct gdbarch_info info)
     features.xlen = 8;
 
   /* Now build a target description based on the feature set.  */
-  return riscv_create_target_description (features);
+  return riscv_lookup_target_description (features);
 }
 
 /* All of the registers in REG_SET are checked for in FEATURE, TDESC_DATA
@@ -3053,6 +3023,58 @@ riscv_dwarf_reg_to_regnum (struct gdbarch *gdbarch, int reg)
     return RISCV_FIRST_FP_REGNUM + (reg - RISCV_DWARF_REGNUM_F0);
 
   return -1;
+}
+
+/* Implement the gcc_target_options method.  We have to select the arch and abi
+   from the feature info.  We have enough feature info to select the abi, but
+   not enough info for the arch given all of the possible architecture
+   extensions.  So choose reasonable defaults for now.  */
+
+static std::string
+riscv_gcc_target_options (struct gdbarch *gdbarch)
+{
+  int isa_xlen = riscv_isa_xlen (gdbarch);
+  int isa_flen = riscv_isa_flen (gdbarch);
+  int abi_xlen = riscv_abi_xlen (gdbarch);
+  int abi_flen = riscv_abi_flen (gdbarch);
+  std::string target_options;
+
+  target_options = "-march=rv";
+  if (isa_xlen == 8)
+    target_options += "64";
+  else
+    target_options += "32";
+  if (isa_flen == 8)
+    target_options += "gc";
+  else if (isa_flen == 4)
+    target_options += "imafc";
+  else
+    target_options += "imac";
+
+  target_options += " -mabi=";
+  if (abi_xlen == 8)
+    target_options += "lp64";
+  else
+    target_options += "ilp32";
+  if (abi_flen == 8)
+    target_options += "d";
+  else if (abi_flen == 4)
+    target_options += "f";
+
+  /* The gdb loader doesn't handle link-time relaxation relocations.  */
+  target_options += " -mno-relax";
+
+  return target_options;
+}
+
+/* Implement the gnu_triplet_regexp method.  A single compiler supports both
+   32-bit and 64-bit code, and may be named riscv32 or riscv64 or (not
+   recommended) riscv.  */
+
+static const char *
+riscv_gnu_triplet_regexp (struct gdbarch *gdbarch)
+{
+  return "riscv(32|64)?";
 }
 
 /* Initialize the current architecture based on INFO.  If possible,
@@ -3299,8 +3321,14 @@ riscv_gdbarch_init (struct gdbarch_info info,
     riscv_setup_register_aliases (gdbarch, &riscv_freg_feature);
   riscv_setup_register_aliases (gdbarch, &riscv_csr_feature);
 
+  /* Compile command hooks.  */
+  set_gdbarch_gcc_target_options (gdbarch, riscv_gcc_target_options);
+  set_gdbarch_gnu_triplet_regexp (gdbarch, riscv_gnu_triplet_regexp);
+
   /* Hook in OS ABI-specific overrides, if they have been registered.  */
   gdbarch_init_osabi (info, gdbarch);
+
+  register_riscv_ravenscar_ops (gdbarch);
 
   return gdbarch;
 }
@@ -3452,8 +3480,9 @@ riscv_init_reggroups ()
   csr_reggroup = reggroup_new ("csr", USER_REGGROUP);
 }
 
+void _initialize_riscv_tdep ();
 void
-_initialize_riscv_tdep (void)
+_initialize_riscv_tdep ()
 {
   riscv_create_csr_aliases ();
   riscv_init_reggroups ();
@@ -3462,15 +3491,15 @@ _initialize_riscv_tdep (void)
 
   /* Add root prefix command for all "set debug riscv" and "show debug
      riscv" commands.  */
-  add_prefix_cmd ("riscv", no_class, set_debug_riscv_command,
-		  _("RISC-V specific debug commands."),
-		  &setdebugriscvcmdlist, "set debug riscv ", 0,
-		  &setdebuglist);
+  add_basic_prefix_cmd ("riscv", no_class,
+			_("RISC-V specific debug commands."),
+			&setdebugriscvcmdlist, "set debug riscv ", 0,
+			&setdebuglist);
 
-  add_prefix_cmd ("riscv", no_class, show_debug_riscv_command,
-		  _("RISC-V specific debug commands."),
-		  &showdebugriscvcmdlist, "show debug riscv ", 0,
-		  &showdebuglist);
+  add_show_prefix_cmd ("riscv", no_class,
+		       _("RISC-V specific debug commands."),
+		       &showdebugriscvcmdlist, "show debug riscv ", 0,
+		       &showdebuglist);
 
   add_setshow_zuinteger_cmd ("breakpoints", class_maintenance,
 			     &riscv_debug_breakpoints,  _("\
@@ -3513,13 +3542,13 @@ initialisation process."),
 			     &setdebugriscvcmdlist, &showdebugriscvcmdlist);
 
   /* Add root prefix command for all "set riscv" and "show riscv" commands.  */
-  add_prefix_cmd ("riscv", no_class, set_riscv_command,
-		  _("RISC-V specific commands."),
-		  &setriscvcmdlist, "set riscv ", 0, &setlist);
+  add_basic_prefix_cmd ("riscv", no_class,
+			_("RISC-V specific commands."),
+			&setriscvcmdlist, "set riscv ", 0, &setlist);
 
-  add_prefix_cmd ("riscv", no_class, show_riscv_command,
-		  _("RISC-V specific commands."),
-		  &showriscvcmdlist, "show riscv ", 0, &showlist);
+  add_show_prefix_cmd ("riscv", no_class,
+		       _("RISC-V specific commands."),
+		       &showriscvcmdlist, "show riscv ", 0, &showlist);
 
 
   use_compressed_breakpoints = AUTO_BOOLEAN_AUTO;

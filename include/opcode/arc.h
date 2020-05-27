@@ -1,5 +1,5 @@
 /* Opcode table for the ARC.
-   Copyright (C) 1994-2019 Free Software Foundation, Inc.
+   Copyright (C) 1994-2020 Free Software Foundation, Inc.
 
    Contributed by Claudiu Zissulescu (claziss@synopsys.com)
 
@@ -59,12 +59,12 @@ typedef enum
   EI,
   ENTER,
   FLOAT,
-  FASTMATH,
   INVALID,
   JLI,
   JUMP,
   KERNEL,
   LEAVE,
+  LLOCK,
   LOAD,
   LOGICAL,
   LOOP,
@@ -77,6 +77,7 @@ typedef enum
   PMU,
   POP,
   PUSH,
+  SCOND,
   SJLI,
   STORE,
   SUB,
@@ -99,6 +100,7 @@ typedef enum
   DP       = (1U << 6),
   DPA      = (1U << 7),
   DPX      = (1U << 8),
+  FASTMATH = (1U << 23),
   LL64     = (1U << 9),
   MPY1E    = (1U << 10),
   MPY6E    = (1U << 11),

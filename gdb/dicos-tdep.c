@@ -1,6 +1,6 @@
 /* Target-dependent, architecture-independent code for DICOS, for GDB.
 
-   Copyright (C) 2009-2019 Free Software Foundation, Inc.
+   Copyright (C) 2009-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -70,7 +70,7 @@ dicos_load_module_p (bfd *abfd, int header_size)
   if (!section)
     return 0;
 
-  if (bfd_section_size (abfd, section) != header_size)
+  if (bfd_section_size (section) != header_size)
     return 0;
 
   /* Dicos LMs always have a "Dicos_loadModuleInfo" symbol

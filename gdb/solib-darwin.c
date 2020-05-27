@@ -1,6 +1,6 @@
 /* Handle Darwin shared libraries for GDB, the GNU Debugger.
 
-   Copyright (C) 2009-2019 Free Software Foundation, Inc.
+   Copyright (C) 2009-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -223,7 +223,7 @@ static struct so_list *
 darwin_current_sos (void)
 {
   struct type *ptr_type = builtin_type (target_gdbarch ())->builtin_data_ptr;
-  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch ());
+  enum bfd_endian byte_order = type_byte_order (ptr_type);
   int ptr_len = TYPE_LENGTH (ptr_type);
   unsigned int image_info_size;
   struct so_list *head = NULL;
@@ -436,7 +436,7 @@ darwin_get_dyld_bfd ()
     return NULL;
 
   /* Create a bfd for the interpreter.  */
-  gdb_bfd_ref_ptr dyld_bfd (gdb_bfd_open (interp_name, gnutarget, -1));
+  gdb_bfd_ref_ptr dyld_bfd (gdb_bfd_open (interp_name, gnutarget));
   if (dyld_bfd != NULL)
     {
       gdb_bfd_ref_ptr sub
@@ -638,14 +638,6 @@ darwin_relocate_section_addresses (struct so_list *so,
     so->addr_low = sec->addr;
 }
 
-static struct block_symbol
-darwin_lookup_lib_symbol (struct objfile *objfile,
-			  const char *name,
-			  const domain_enum domain)
-{
-  return {};
-}
-
 static gdb_bfd_ref_ptr
 darwin_bfd_open (const char *pathname)
 {
@@ -670,16 +662,16 @@ darwin_bfd_open (const char *pathname)
   /* The current filename for fat-binary BFDs is a name generated
      by BFD, usually a string containing the name of the architecture.
      Reset its value to the actual filename.  */
-  xfree (bfd_get_filename (res.get ()));
-  res->filename = xstrdup (pathname);
+  bfd_set_filename (res.get (), pathname);
 
   return res;
 }
 
 struct target_so_ops darwin_so_ops;
 
+void _initialize_darwin_solib ();
 void
-_initialize_darwin_solib (void)
+_initialize_darwin_solib ()
 {
   darwin_so_ops.relocate_section_addresses = darwin_relocate_section_addresses;
   darwin_so_ops.free_so = darwin_free_so;
@@ -688,6 +680,5 @@ _initialize_darwin_solib (void)
   darwin_so_ops.current_sos = darwin_current_sos;
   darwin_so_ops.open_symbol_file_object = open_symbol_file_object;
   darwin_so_ops.in_dynsym_resolve_code = darwin_in_dynsym_resolve_code;
-  darwin_so_ops.lookup_lib_global_symbol = darwin_lookup_lib_symbol;
   darwin_so_ops.bfd_open = darwin_bfd_open;
 }

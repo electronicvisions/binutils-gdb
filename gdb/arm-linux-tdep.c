@@ -1,6 +1,6 @@
 /* GNU/Linux on ARM target support.
 
-   Copyright (C) 1999-2019 Free Software Foundation, Inc.
+   Copyright (C) 1999-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -56,7 +56,6 @@
 #include "user-regs.h"
 #include <ctype.h>
 #include "elf/common.h"
-extern int arm_apcs_32;
 
 /* Under ARM GNU/Linux the traditional way of performing a breakpoint
    is to execute a particular software interrupt, rather than use a
@@ -1104,12 +1103,13 @@ arm_catch_kernel_helper_return (struct gdbarch *gdbarch, CORE_ADDR from,
    the program has stepped into a Linux kernel helper routine (which must be
    handled as a special case).  */
 
-static struct displaced_step_closure *
+static displaced_step_closure_up
 arm_linux_displaced_step_copy_insn (struct gdbarch *gdbarch,
 				    CORE_ADDR from, CORE_ADDR to,
 				    struct regcache *regs)
 {
-  arm_displaced_step_closure *dsc = new arm_displaced_step_closure;
+  std::unique_ptr<arm_displaced_step_closure> dsc
+    (new arm_displaced_step_closure);
 
   /* Detect when we enter an (inaccessible by GDB) Linux kernel helper, and
      stop at the return location.  */
@@ -1119,19 +1119,20 @@ arm_linux_displaced_step_copy_insn (struct gdbarch *gdbarch,
         fprintf_unfiltered (gdb_stdlog, "displaced: detected kernel helper "
 			    "at %.8lx\n", (unsigned long) from);
 
-      arm_catch_kernel_helper_return (gdbarch, from, to, regs, dsc);
+      arm_catch_kernel_helper_return (gdbarch, from, to, regs, dsc.get ());
     }
   else
     {
       /* Override the default handling of SVC instructions.  */
       dsc->u.svc.copy_svc_os = arm_linux_copy_svc;
 
-      arm_process_displaced_insn (gdbarch, from, to, regs, dsc);
+      arm_process_displaced_insn (gdbarch, from, to, regs, dsc.get ());
     }
 
-  arm_displaced_init_closure (gdbarch, from, to, dsc);
+  arm_displaced_init_closure (gdbarch, from, to, dsc.get ());
 
-  return dsc;
+  /* This is a work around for a problem with g++ 4.8.  */
+  return displaced_step_closure_up (dsc.release ());
 }
 
 /* Implementation of `gdbarch_stap_is_single_operand', as defined in
@@ -1711,11 +1712,11 @@ arm_linux_skip_trampoline_code (struct frame_info *frame, CORE_ADDR pc)
 
 /* Implement the gcc_target_options gdbarch method.  */
 
-static char *
+static std::string
 arm_linux_gcc_target_options (struct gdbarch *gdbarch)
 {
   /* GCC doesn't know "-m32".  */
-  return NULL;
+  return {};
 }
 
 static void
@@ -2002,8 +2003,9 @@ arm_linux_init_abi (struct gdbarch_info info,
   set_gdbarch_gcc_target_options (gdbarch, arm_linux_gcc_target_options);
 }
 
+void _initialize_arm_linux_tdep ();
 void
-_initialize_arm_linux_tdep (void)
+_initialize_arm_linux_tdep ()
 {
   gdbarch_register_osabi (bfd_arch_arm, 0, GDB_OSABI_LINUX,
 			  arm_linux_init_abi);

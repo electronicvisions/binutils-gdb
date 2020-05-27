@@ -1,4 +1,4 @@
-# Copyright (C) 2007-2019 Free Software Foundation, Inc.
+# Copyright (C) 2007-2020 Free Software Foundation, Inc.
 
 # This file is part of GDB.
 
@@ -53,7 +53,7 @@ WHICH = arm/arm-with-iwmmxt arm/arm-with-vfpv2 arm/arm-with-vfpv3 \
 	rs6000/powerpc-32 \
 	rs6000/powerpc-32l rs6000/powerpc-altivec32l rs6000/powerpc-e500l \
 	rs6000/powerpc-64l rs6000/powerpc-altivec64l rs6000/powerpc-vsx32l \
-	rs6000/powerpc-vsx64l rs6000/powerpc-cell32l rs6000/powerpc-cell64l \
+	rs6000/powerpc-vsx64l \
 	rs6000/powerpc-isa205-32l rs6000/powerpc-isa205-64l \
 	rs6000/powerpc-isa205-altivec32l rs6000/powerpc-isa205-altivec64l \
 	rs6000/powerpc-isa205-vsx32l rs6000/powerpc-isa205-vsx64l \
@@ -85,8 +85,6 @@ microblaze-expedite = r1,rpc
 nios2-linux-expedite = sp,pc
 or1k-expedite = r1,npc
 powerpc-expedite = r1,pc
-rs6000/powerpc-cell32l-expedite = r1,pc,r0,orig_r3,r4
-rs6000/powerpc-cell64l-expedite = r1,pc,r0,orig_r3,r4
 s390-linux32-expedite = r14,r15,pswa
 s390-linux32v1-expedite = r14,r15,pswa
 s390-linux32v2-expedite = r14,r15,pswa
@@ -111,8 +109,6 @@ OUTPUTS = $(patsubst %,$(outdir)/%.dat,$(WHICH))
 # --enable-targets=all GDB.  You can override this by passing XMLTOC
 # to make on the command line.
 XMLTOC = \
-	arc-v2.xml \
-	arc-arcompact.xml \
 	microblaze-with-stack-protect.xml \
 	microblaze.xml \
 	mips-dsp-linux.xml \
@@ -141,8 +137,6 @@ XMLTOC = \
 	rs6000/powerpc-altivec32l.xml \
 	rs6000/powerpc-altivec64.xml \
 	rs6000/powerpc-altivec64l.xml \
-	rs6000/powerpc-cell32l.xml \
-	rs6000/powerpc-cell64l.xml \
 	rs6000/powerpc-e500.xml \
 	rs6000/powerpc-e500l.xml \
 	rs6000/powerpc-isa205-32l.xml \
@@ -163,6 +157,7 @@ XMLTOC = \
 	rs6000/powerpc-vsx64l.xml \
 	rs6000/powerpc-nux.xml \
 	rs6000/rs6000.xml \
+	rx.xml \
 	s390-linux32.xml \
 	s390-linux32v1.xml \
 	s390-linux32v2.xml \
@@ -211,6 +206,10 @@ $(outdir)/%.dat: %.xml number-regs.xsl sort-regs.xsl gdbserver-regs.xsl
 FEATURE_XMLFILES = aarch64-core.xml \
 	aarch64-fpu.xml \
 	aarch64-pauth.xml \
+	arc/core-v2.xml \
+	arc/aux-v2.xml \
+	arc/core-arcompact.xml \
+	arc/aux-arcompact.xml \
 	arm/arm-core.xml \
 	arm/arm-fpa.xml \
 	arm/arm-m-profile.xml \
@@ -240,6 +239,7 @@ FEATURE_XMLFILES = aarch64-core.xml \
 	riscv/64bit-cpu.xml \
 	riscv/64bit-csr.xml \
 	riscv/64bit-fpu.xml \
+	rx.xml \
 	tic6x-c6xp.xml \
 	tic6x-core.xml \
 	tic6x-gp.xml

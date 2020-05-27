@@ -5,7 +5,7 @@
    THIS FILE IS MACHINE GENERATED WITH CGEN.
    - the resultant file is machine generated, cgen-dis.in isn't
 
-   Copyright (C) 1996-2019 Free Software Foundation, Inc.
+   Copyright (C) 1996-2020 Free Software Foundation, Inc.
 
    This file is part of libopcodes.
 
@@ -123,9 +123,6 @@ or1k_cgen_print_operand (CGEN_CPU_DESC cd,
     case OR1K_OPERAND_RAD32F :
       print_regpair (cd, info, fields->f_rad32, 0|(1<<CGEN_OPERAND_VIRTUAL), pc, length);
       break;
-    case OR1K_OPERAND_RADF :
-      print_keyword (cd, info, & or1k_cgen_opval_h_fdr, fields->f_r2, 0);
-      break;
     case OR1K_OPERAND_RADI :
       print_regpair (cd, info, fields->f_rad32, 0|(1<<CGEN_OPERAND_VIRTUAL), pc, length);
       break;
@@ -138,9 +135,6 @@ or1k_cgen_print_operand (CGEN_CPU_DESC cd,
     case OR1K_OPERAND_RBD32F :
       print_regpair (cd, info, fields->f_rbd32, 0|(1<<CGEN_OPERAND_VIRTUAL), pc, length);
       break;
-    case OR1K_OPERAND_RBDF :
-      print_keyword (cd, info, & or1k_cgen_opval_h_fdr, fields->f_r3, 0);
-      break;
     case OR1K_OPERAND_RBDI :
       print_regpair (cd, info, fields->f_rbd32, 0|(1<<CGEN_OPERAND_VIRTUAL), pc, length);
       break;
@@ -152,9 +146,6 @@ or1k_cgen_print_operand (CGEN_CPU_DESC cd,
       break;
     case OR1K_OPERAND_RDD32F :
       print_regpair (cd, info, fields->f_rdd32, 0|(1<<CGEN_OPERAND_VIRTUAL), pc, length);
-      break;
-    case OR1K_OPERAND_RDDF :
-      print_keyword (cd, info, & or1k_cgen_opval_h_fdr, fields->f_r1, 0);
       break;
     case OR1K_OPERAND_RDDI :
       print_regpair (cd, info, fields->f_rdd32, 0|(1<<CGEN_OPERAND_VIRTUAL), pc, length);
@@ -534,7 +525,7 @@ print_insn_or1k (bfd_vma pc, disassemble_info *info)
     cgen_bitset_add (isa, CGEN_COMPUTE_ISA (info));
   }
 #else
-  isa = info->insn_sets;
+  isa = info->private_data;
 #endif
 
   /* If we've switched cpu's, try to find a handle we've used before */

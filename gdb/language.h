@@ -1,6 +1,6 @@
 /* Source-language-related definitions for GDB.
 
-   Copyright (C) 1991-2019 Free Software Foundation, Inc.
+   Copyright (C) 1991-2020 Free Software Foundation, Inc.
 
    Contributed by the Department of Computer Science at the State University
    of New York at Buffalo.
@@ -128,6 +128,47 @@ struct language_arch_info
   struct type *bool_type_default;
 };
 
+/* In a language (particularly C++) a function argument of an aggregate
+   type (i.e.  class/struct/union) may be implicitly passed by reference
+   even though it is declared a call-by-value argument in the source.
+   The struct below puts together necessary information for GDB to be
+   able to detect and carry out pass-by-reference semantics for a
+   particular type.  This type is referred as T in the inlined comments
+   below.
+
+   The default values of the fields are chosen to give correct semantics
+   for primitive types and for simple aggregate types, such as
+
+   class T {
+     int x;
+   };  */
+
+struct language_pass_by_ref_info
+{
+  /* True if an argument of type T can be passed to a function by value
+     (i.e.  not through an implicit reference).  False, otherwise.  */
+  bool trivially_copyable = true;
+
+  /* True if a copy of a value of type T can be initialized by
+     memcpy'ing the value bit-by-bit.  False, otherwise.
+     E.g.  If T has a user-defined copy ctor, this should be false.  */
+  bool trivially_copy_constructible = true;
+
+  /* True if a value of type T can be destructed simply by reclaiming
+     the memory area occupied by the value.  False, otherwise.
+     E.g.  If T has a user-defined destructor, this should be false.  */
+  bool trivially_destructible = true;
+
+  /* True if it is allowed to create a copy of a value of type T.
+     False, otherwise.
+     E.g.  If T has a deleted copy ctor, this should be false.  */
+  bool copy_constructible = true;
+
+  /* True if a value of type T can be destructed.  False, otherwise.
+     E.g.  If T has a deleted destructor, this should be false.  */
+  bool destructible = true;
+};
+
 /* Structure tying together assorted information about a language.  */
 
 struct language_defn
@@ -208,28 +249,11 @@ struct language_defn
 			      struct ui_file *stream);
 
     /* Print a value using syntax appropriate for this language.
-       
-       TYPE is the type of the sub-object to be printed.
+       RECURSE is the recursion depth.  It is zero-based.  */
 
-       EMBEDDED_OFFSET is the offset into the outermost object of the
-       sub-object represented by TYPE.  This is the object which this
-       call should print.  Note that the enclosing type is not
-       available.
-
-       ADDRESS is the address in the inferior of the enclosing object.
-
-       STREAM is the stream on which the value is to be printed.
-
-       RECURSE is the recursion depth.  It is zero-based.
-
-       OPTIONS are the formatting options to be used when
-       printing.  */
-
-    void (*la_val_print) (struct type *type,
-			  int embedded_offset, CORE_ADDR address,
-			  struct ui_file *stream, int recurse,
-			  struct value *val,
-			  const struct value_print_options *options);
+    void (*la_value_print_inner) (struct value *, struct ui_file *,
+				  int recurse,
+				  const struct value_print_options *);
 
     /* Print a top-level value using syntax appropriate for this language.  */
 
@@ -352,28 +376,15 @@ struct language_defn
 				   struct language_arch_info *);
 
     /* Print the index of an element of an array.  */
-    void (*la_print_array_index) (struct value *index_value,
+    void (*la_print_array_index) (struct type *index_type,
+				  LONGEST index_value,
                                   struct ui_file *stream,
                                   const struct value_print_options *options);
 
-    /* Return non-zero if TYPE should be passed (and returned) by
-       reference at the language level.  */
-    int (*la_pass_by_reference) (struct type *type);
-
-    /* Obtain a string from the inferior, storing it in a newly allocated
-       buffer in BUFFER, which should be freed by the caller.  If the
-       in- and out-parameter *LENGTH is specified at -1, the string is
-       read until a null character of the appropriate width is found -
-       otherwise the string is read to the length of characters specified.
-       On completion, *LENGTH will hold the size of the string in characters.
-       If a *LENGTH of -1 was specified it will count only actual
-       characters, excluding any eventual terminating null character.
-       Otherwise *LENGTH will include all characters - including any nulls.
-       CHARSET will hold the encoding used in the string.  */
-    void (*la_get_string) (struct value *value,
-			   gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
-			   int *length, struct type **chartype,
-			   const char **charset);
+    /* Return information about whether TYPE should be passed
+       (and returned) by reference at the language level.  */
+    struct language_pass_by_ref_info (*la_pass_by_reference)
+      (struct type *type);
 
     /* Return an expression that can be used for a location
        watchpoint.  TYPE is a pointer type that points to the memory
@@ -407,7 +418,7 @@ struct language_defn
        This field may not be NULL.  If the language does not need any
        special processing here, 'iterate_over_symbols' should be
        used as the definition.  */
-    void (*la_iterate_over_symbols)
+    bool (*la_iterate_over_symbols)
       (const struct block *block, const lookup_name_info &name,
        domain_enum domain,
        gdb::function_view<symbol_found_callback_ftype> callback);
@@ -483,6 +494,11 @@ extern const struct language_defn *current_language;
 
 extern const struct language_defn *expected_language;
 
+/* Warning issued when current_language and the language of the current
+   frame do not match.  */
+
+extern const char lang_frame_mismatch_warn[];
+
 /* language_mode == 
    language_mode_auto:   current_language automatically set upon selection
    of scope (e.g. stack frame)
@@ -554,11 +570,10 @@ extern enum language set_language (enum language);
 				 encoding, force_ellipses,options))
 #define LA_EMIT_CHAR(ch, type, stream, quoter) \
   (current_language->la_emitchar(ch, type, stream, quoter))
-#define LA_GET_STRING(value, buffer, length, chartype, encoding) \
-  (current_language->la_get_string(value, buffer, length, chartype, encoding))
 
-#define LA_PRINT_ARRAY_INDEX(index_value, stream, options) \
-  (current_language->la_print_array_index(index_value, stream, options))
+#define LA_PRINT_ARRAY_INDEX(index_type, index_value, stream, options)	\
+  (current_language->la_print_array_index(index_type, index_value, stream, \
+					  options))
 
 #define LA_ITERATE_OVER_SYMBOLS(BLOCK, NAME, DOMAIN, CALLBACK) \
   (current_language->la_iterate_over_symbols (BLOCK, NAME, DOMAIN, CALLBACK))
@@ -621,27 +636,22 @@ extern char *language_class_name_from_physname (const struct language_defn *,
 extern const char *default_word_break_characters (void);
 
 /* Print the index of an array element using the C99 syntax.  */
-extern void default_print_array_index (struct value *index_value,
+extern void default_print_array_index (struct type *index_type, LONGEST index,
                                        struct ui_file *stream,
 				       const struct value_print_options *options);
 
-/* Return non-zero if TYPE should be passed (and returned) by
-   reference at the language level.  */
-int language_pass_by_reference (struct type *type);
+/* Return information about whether TYPE should be passed
+   (and returned) by reference at the language level.  */
+struct language_pass_by_ref_info language_pass_by_reference (struct type *type);
 
-/* Return zero; by default, types are passed by value at the language
-   level.  The target ABI may pass or return some structs by reference
-   independent of this.  */
-int default_pass_by_reference (struct type *type);
+/* Return a default struct that provides pass-by-reference information
+   about the given TYPE.  Languages should update the default values
+   as appropriate.  */
+struct language_pass_by_ref_info default_pass_by_reference (struct type *type);
 
 /* The default implementation of la_print_typedef.  */
 void default_print_typedef (struct type *type, struct symbol *new_symbol,
 			    struct ui_file *stream);
-
-void default_get_string (struct value *value,
-			 gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
-			 int *length, struct type **char_type,
-			 const char **charset);
 
 /* Default name hashing function.  */
 
@@ -732,7 +742,7 @@ public:
       {
 	m_lang = current_language->la_language;
 	m_switched = true;
-	set_language (SYMBOL_LANGUAGE (sym));
+	set_language (sym->language ());
       }
     else
       {

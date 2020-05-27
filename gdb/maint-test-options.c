@@ -1,6 +1,6 @@
 /* Maintenance commands for testing the options framework.
 
-   Copyright (C) 2019 Free Software Foundation, Inc.
+   Copyright (C) 2019-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -126,10 +126,10 @@ static const char *const test_options_enum_values_choices[] =
 
 struct test_options_opts
 {
-  int flag_opt = 0;
-  int xx1_opt = 0;
-  int xx2_opt = 0;
-  int boolean_opt = 0;
+  bool flag_opt = false;
+  bool xx1_opt = false;
+  bool xx2_opt = false;
+  bool boolean_opt = false;
   const char *enum_opt = test_options_enum_values_xxx;
   unsigned int uint_opt = 0;
   int zuint_unl_opt = 0;
@@ -411,30 +411,19 @@ maintenance_test_options_unknown_is_operand_command_completer
 /* Command list for maint test-options.  */
 struct cmd_list_element *maintenance_test_options_list;
 
-/* The "maintenance test-options" prefix command.  */
-
-static void
-maintenance_test_options_command (const char *arg, int from_tty)
-{
-  printf_unfiltered
-    (_("\"maintenance test-options\" must be followed "
-       "by the name of a subcommand.\n"));
-  help_list (maintenance_test_options_list, "maintenance test-options ",
-	     all_commands, gdb_stdout);
-}
-
 
+void _initialize_maint_test_options ();
 void
 _initialize_maint_test_options ()
 {
   cmd_list_element *cmd;
 
-  add_prefix_cmd ("test-options", no_class, maintenance_test_options_command,
-		  _("\
+  add_basic_prefix_cmd ("test-options", no_class,
+			_("\
 Generic command for testing the options infrastructure."),
-		  &maintenance_test_options_list,
-		  "maintenance test-options ", 0,
-		  &maintenancelist);
+			&maintenance_test_options_list,
+			"maintenance test-options ", 0,
+			&maintenancelist);
 
   const auto def_group = make_test_options_options_def_group (nullptr);
 
@@ -444,8 +433,8 @@ Command used for testing options processing.\n\
 Usage: maint test-options require-delimiter [[OPTION]... --] [OPERAND]...\n\
 \n\
 Options:\n\
-\n\
 %OPTIONS%\n\
+\n\
 If you specify any command option, you must use a double dash (\"--\")\n\
 to mark the end of option processing."),
 			       def_group);
@@ -456,7 +445,6 @@ Command used for testing options processing.\n\
 Usage: maint test-options unknown-is-error [OPTION]... [OPERAND]...\n\
 \n\
 Options:\n\
-\n\
 %OPTIONS%"),
 			       def_group);
 
@@ -466,7 +454,6 @@ Command used for testing options processing.\n\
 Usage: maint test-options unknown-is-operand [OPTION]... [OPERAND]...\n\
 \n\
 Options:\n\
-\n\
 %OPTIONS%"),
 			       def_group);
 

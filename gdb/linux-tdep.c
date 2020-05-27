@@ -1,6 +1,6 @@
 /* Target-dependent code for GNU/Linux, architecture independent.
 
-   Copyright (C) 2009-2019 Free Software Foundation, Inc.
+   Copyright (C) 2009-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -91,12 +91,12 @@ struct smaps_vmflags
 /* Whether to take the /proc/PID/coredump_filter into account when
    generating a corefile.  */
 
-static int use_coredump_filter = 1;
+static bool use_coredump_filter = true;
 
 /* Whether the value of smaps_vmflags->exclude_coredump should be
    ignored, including mappings marked with the VM_DONTDUMP flag in
    the dump.  */
-static int dump_excluded_mappings = 0;
+static bool dump_excluded_mappings = false;
 
 /* This enum represents the signals' numbers on a generic architecture
    running the Linux kernel.  The definition of "generic" comes from
@@ -258,7 +258,7 @@ linux_get_siginfo_type_with_fields (struct gdbarch *gdbarch,
 
   /* sival_t */
   sigval_type = arch_composite_type (gdbarch, NULL, TYPE_CODE_UNION);
-  TYPE_NAME (sigval_type) = xstrdup ("sigval_t");
+  sigval_type->set_name (xstrdup ("sigval_t"));
   append_composite_type_field (sigval_type, "sival_int", int_type);
   append_composite_type_field (sigval_type, "sival_ptr", void_ptr_type);
 
@@ -352,7 +352,7 @@ linux_get_siginfo_type_with_fields (struct gdbarch *gdbarch,
 
   /* struct siginfo */
   siginfo_type = arch_composite_type (gdbarch, NULL, TYPE_CODE_STRUCT);
-  TYPE_NAME (siginfo_type) = xstrdup ("siginfo");
+  siginfo_type->set_name (xstrdup ("siginfo"));
   append_composite_type_field (siginfo_type, "si_signo", int_type);
   append_composite_type_field (siginfo_type, "si_errno", int_type);
   append_composite_type_field (siginfo_type, "si_code", int_type);
@@ -839,9 +839,10 @@ linux_info_proc (struct gdbarch *gdbarch, const char *args,
 			   "      Size", "    Offset", "objfile");
 	    }
 
-	  for (line = strtok (map.get (), "\n");
+	  char *saveptr;
+	  for (line = strtok_r (map.get (), "\n", &saveptr);
 	       line;
-	       line = strtok (NULL, "\n"))
+	       line = strtok_r (NULL, "\n", &saveptr))
 	    {
 	      ULONGEST addr, endaddr, offset, inode;
 	      const char *permissions, *device, *mapping_filename;
@@ -1046,7 +1047,7 @@ linux_core_info_proc_mappings (struct gdbarch *gdbarch, const char *args)
 
   addr_size_bits = gdbarch_addr_bit (core_gdbarch);
   addr_size = addr_size_bits / 8;
-  note_size = bfd_get_section_size (section);
+  note_size = bfd_section_size (section);
 
   if (note_size < 2 * addr_size)
     error (_("malformed core note - too short for header"));
@@ -1413,73 +1414,6 @@ find_signalled_thread (struct thread_info *info, void *data)
   return 0;
 }
 
-/* Generate corefile notes for SPU contexts.  */
-
-static char *
-linux_spu_make_corefile_notes (bfd *obfd, char *note_data, int *note_size)
-{
-  static const char *spu_files[] =
-    {
-      "object-id",
-      "mem",
-      "regs",
-      "fpcr",
-      "lslr",
-      "decr",
-      "decr_status",
-      "signal1",
-      "signal1_type",
-      "signal2",
-      "signal2_type",
-      "event_mask",
-      "event_status",
-      "mbox_info",
-      "ibox_info",
-      "wbox_info",
-      "dma_info",
-      "proxydma_info",
-   };
-
-  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch ());
-
-  /* Determine list of SPU ids.  */
-  gdb::optional<gdb::byte_vector>
-    spu_ids = target_read_alloc (current_top_target (),
-				 TARGET_OBJECT_SPU, NULL);
-
-  if (!spu_ids)
-    return note_data;
-
-  /* Generate corefile notes for each SPU file.  */
-  for (size_t i = 0; i < spu_ids->size (); i += 4)
-    {
-      int fd = extract_unsigned_integer (spu_ids->data () + i, 4, byte_order);
-
-      for (size_t j = 0; j < sizeof (spu_files) / sizeof (spu_files[0]); j++)
-	{
-	  char annex[32], note_name[32];
-
-	  xsnprintf (annex, sizeof annex, "%d/%s", fd, spu_files[j]);
-	  gdb::optional<gdb::byte_vector> spu_data
-	    = target_read_alloc (current_top_target (), TARGET_OBJECT_SPU, annex);
-
-	  if (spu_data && !spu_data->empty ())
-	    {
-	      xsnprintf (note_name, sizeof note_name, "SPU/%s", annex);
-	      note_data = elfcore_write_note (obfd, note_data, note_size,
-					      note_name, NT_SPU,
-					      spu_data->data (),
-					      spu_data->size ());
-
-	      if (!note_data)
-		return nullptr;
-	    }
-	}
-    }
-
-  return note_data;
-}
-
 /* This is used to pass information from
    linux_make_mappings_corefile_notes through
    linux_find_memory_regions_full.  */
@@ -1717,7 +1651,8 @@ linux_corefile_thread (struct thread_info *info,
 {
   struct regcache *regcache;
 
-  regcache = get_thread_arch_regcache (info->ptid, args->gdbarch);
+  regcache = get_thread_arch_regcache (info->inf->process_target (),
+				       info->ptid, args->gdbarch);
 
   target_fetch_registers (regcache, -1);
   gdb::byte_vector siginfo_data = linux_get_siginfo_data (info, args->gdbarch);
@@ -1794,7 +1729,7 @@ linux_fill_prpsinfo (struct elf_internal_linux_prpsinfo *p)
 
   /* Copying the program name.  Only the basename matters.  */
   basename = lbasename (fname.get ());
-  strncpy (p->pr_fname, basename, sizeof (p->pr_fname));
+  strncpy (p->pr_fname, basename, sizeof (p->pr_fname) - 1);
   p->pr_fname[sizeof (p->pr_fname) - 1] = '\0';
 
   infargs = get_inferior_args ();
@@ -1804,7 +1739,7 @@ linux_fill_prpsinfo (struct elf_internal_linux_prpsinfo *p)
   if (infargs != NULL)
     psargs = psargs + " " + infargs;
 
-  strncpy (p->pr_psargs, psargs.c_str (), sizeof (p->pr_psargs));
+  strncpy (p->pr_psargs, psargs.c_str (), sizeof (p->pr_psargs) - 1);
   p->pr_psargs[sizeof (p->pr_psargs) - 1] = '\0';
 
   xsnprintf (filename, sizeof (filename), "/proc/%d/stat", (int) pid);
@@ -2007,11 +1942,6 @@ linux_make_corefile_notes (struct gdbarch *gdbarch, bfd *obfd, int *note_size)
       if (!note_data)
 	return NULL;
     }
-
-  /* SPU information.  */
-  note_data = linux_spu_make_corefile_notes (obfd, note_data, note_size);
-  if (!note_data)
-    return NULL;
 
   /* File mappings.  */
   note_data = linux_make_mappings_corefile_notes (gdbarch, obfd,
@@ -2396,7 +2326,7 @@ linux_infcall_mmap (CORE_ADDR size, unsigned prot)
      "mmap" uses 64-bit off_t on x86_64 and 32-bit off_t on i386 and x32.  */
   struct value *mmap_val = find_function_in_inferior ("mmap64", &objf);
   struct value *addr_val;
-  struct gdbarch *gdbarch = get_objfile_arch (objf);
+  struct gdbarch *gdbarch = objf->arch ();
   CORE_ADDR retval;
   enum
     {
@@ -2435,7 +2365,7 @@ linux_infcall_munmap (CORE_ADDR addr, CORE_ADDR size)
   struct objfile *objf;
   struct value *munmap_val = find_function_in_inferior ("munmap", &objf);
   struct value *retval_val;
-  struct gdbarch *gdbarch = get_objfile_arch (objf);
+  struct gdbarch *gdbarch = objf->arch ();
   LONGEST retval;
   enum
     {
@@ -2556,8 +2486,9 @@ linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_get_siginfo_type (gdbarch, linux_get_siginfo_type);
 }
 
+void _initialize_linux_tdep ();
 void
-_initialize_linux_tdep (void)
+_initialize_linux_tdep ()
 {
   linux_gdbarch_data_handle =
     gdbarch_data_register_post_init (init_linux_gdbarch_data);

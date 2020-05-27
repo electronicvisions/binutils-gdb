@@ -1,5 +1,5 @@
 /* tc-m68k.c -- Assemble for the m68k family
-   Copyright (C) 1987-2019 Free Software Foundation, Inc.
+   Copyright (C) 1987-2020 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -2794,7 +2794,7 @@ m68k_ip (char *instring)
 		      && opP->index.reg <= ZDATA7)
 		    nextword |= (opP->index.reg - ZDATA0) << 12;
 		  else if (opP->index.reg >= ZADDR0
-			   || opP->index.reg <= ZADDR7)
+			   && opP->index.reg <= ZADDR7)
 		    nextword |= (opP->index.reg - ZADDR0 + 8) << 12;
 		}
 
@@ -6135,8 +6135,7 @@ pop_mri_control (void)
 
   n = mri_control_stack;
   mri_control_stack = n->outer;
-  if (n->top != NULL)
-    free (n->top);
+  free (n->top);
   free (n->next);
   free (n->bottom);
   free (n);

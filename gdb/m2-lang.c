@@ -1,6 +1,6 @@
 /* Modula 2 language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 1992-2019 Free Software Foundation, Inc.
+   Copyright (C) 1992-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -181,15 +181,15 @@ static bool
 m2_is_string_type_p (struct type *type)
 {
   type = check_typedef (type);
-  if (TYPE_CODE (type) == TYPE_CODE_ARRAY
+  if (type->code () == TYPE_CODE_ARRAY
       && TYPE_LENGTH (type) > 0
       && TYPE_LENGTH (TYPE_TARGET_TYPE (type)) > 0)
     {
       struct type *elttype = check_typedef (TYPE_TARGET_TYPE (type));
 
       if (TYPE_LENGTH (elttype) == 1
-	  && (TYPE_CODE (elttype) == TYPE_CODE_INT
-	      || TYPE_CODE (elttype) == TYPE_CODE_CHAR))
+	  && (elttype->code () == TYPE_CODE_INT
+	      || elttype->code () == TYPE_CODE_CHAR))
 	return true;
     }
 
@@ -251,7 +251,7 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
 	{
 	  struct value *temp = arg1;
 	  type = TYPE_FIELD_TYPE (type, 0);
-	  if (type == NULL || (TYPE_CODE (type) != TYPE_CODE_PTR))
+	  if (type == NULL || (type->code () != TYPE_CODE_PTR))
 	    {
 	      warning (_("internal error: unbounded "
 			 "array structure is unknown"));
@@ -269,11 +269,11 @@ evaluate_subexp_modula2 (struct type *expect_type, struct expression *exp,
 	  return value_ind (value_ptradd (arg1, value_as_long (arg2)));
 	}
       else
-	if (TYPE_CODE (type) != TYPE_CODE_ARRAY)
+	if (type->code () != TYPE_CODE_ARRAY)
 	  {
-	    if (TYPE_NAME (type))
+	    if (type->name ())
 	      error (_("cannot subscript something of type `%s'"),
-		     TYPE_NAME (type));
+		     type->name ());
 	    else
 	      error (_("cannot subscript requested type"));
 	  }
@@ -393,7 +393,7 @@ extern const struct language_defn m2_language_defn =
   m2_emit_char,			/* Function to print a single character */
   m2_print_type,		/* Print a type using appropriate syntax */
   m2_print_typedef,		/* Print a typedef using appropriate syntax */
-  m2_val_print,			/* Print a value using appropriate syntax */
+  m2_value_print_inner,		/* la_value_print_inner */
   c_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   NULL,				/* Language specific skip_trampoline */
@@ -413,7 +413,6 @@ extern const struct language_defn m2_language_defn =
   m2_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
-  default_get_string,
   c_watch_location_expression,
   NULL,				/* la_get_symbol_name_matcher */
   iterate_over_symbols,
@@ -458,8 +457,9 @@ builtin_m2_type (struct gdbarch *gdbarch)
 
 /* Initialization for Modula-2 */
 
+void _initialize_m2_language ();
 void
-_initialize_m2_language (void)
+_initialize_m2_language ()
 {
   m2_type_data = gdbarch_data_register_post_init (build_m2_types);
 }

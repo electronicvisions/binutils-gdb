@@ -1,5 +1,5 @@
 /* ARC-specific support for 32-bit ELF
-   Copyright (C) 1994-2019 Free Software Foundation, Inc.
+   Copyright (C) 1994-2020 Free Software Foundation, Inc.
    Contributed by Cupertino Miranda (cmiranda@synopsys.com).
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -900,7 +900,7 @@ arc_elf_merge_private_bfd_data (bfd *ibfd, struct bfd_link_info *info)
 
       for (sec = ibfd->sections; sec != NULL; sec = sec->next)
 	{
-	  if ((bfd_get_section_flags (ibfd, sec)
+	  if ((bfd_section_flags (sec)
 	       & (SEC_LOAD | SEC_CODE | SEC_HAS_CONTENTS))
 	      == (SEC_LOAD | SEC_CODE | SEC_HAS_CONTENTS))
 	    only_data_sections = FALSE;
@@ -1255,11 +1255,11 @@ arc_special_overflow_checks (const struct arc_relocation_data reloc_data,
       else								\
 	ARC_DEBUG ("symbol_section->vma = NULL\n");			\
       if (input_section->output_section != NULL)			\
-	ARC_DEBUG ("symbol_section->vma = %#lx\n",			\
+	ARC_DEBUG ("input_section->vma = %#lx\n",			\
 		   input_section->output_section->vma			\
 		   + input_section->output_offset);			\
       else								\
-	ARC_DEBUG ("symbol_section->vma = NULL\n");			\
+	ARC_DEBUG ("input_section->vma = NULL\n");			\
       ARC_DEBUG ("PCL = %#lx\n", P);					\
       ARC_DEBUG ("P = %#lx\n", P);					\
       ARC_DEBUG ("G = %#lx\n", G);					\
@@ -3128,21 +3128,17 @@ arc_elf_relax_section (bfd *abfd, asection *sec,
        elf_section_data (sec)->this_hdr.contents = contents;
     }
 
-  if (internal_relocs != NULL
-      && elf_section_data (sec)->relocs != internal_relocs)
+  if (elf_section_data (sec)->relocs != internal_relocs)
     free (internal_relocs);
 
   return TRUE;
 
  error_return:
-  if (isymbuf != NULL
-      && symtab_hdr->contents != (unsigned char *) isymbuf)
+  if (symtab_hdr->contents != (unsigned char *) isymbuf)
     free (isymbuf);
-  if (contents != NULL
-      && elf_section_data (sec)->this_hdr.contents != contents)
+  if (elf_section_data (sec)->this_hdr.contents != contents)
     free (contents);
-  if (internal_relocs != NULL
-      && elf_section_data (sec)->relocs != internal_relocs)
+  if (elf_section_data (sec)->relocs != internal_relocs)
     free (internal_relocs);
 
   return FALSE;

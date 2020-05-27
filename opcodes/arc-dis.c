@@ -1,5 +1,5 @@
 /* Instruction printing code for the ARC.
-   Copyright (C) 1994-2019 Free Software Foundation, Inc.
+   Copyright (C) 1994-2020 Free Software Foundation, Inc.
 
    Contributed by Claudiu Zissulescu (claziss@synopsys.com)
 
@@ -90,7 +90,7 @@ static const char * const regnames[64] =
   "r32", "r33", "r34", "r35", "r36", "r37", "r38", "r39",
   "r40", "r41", "r42", "r43", "r44", "r45", "r46", "r47",
   "r48", "r49", "r50", "r51", "r52", "r53", "r54", "r55",
-  "r56", "r57", "ACCL", "ACCH", "lp_count", "rezerved", "LIMM", "pcl"
+  "r56", "r57", "r58", "r59", "lp_count", "reserved", "LIMM", "pcl"
 };
 
 static const char * const addrtypenames[ARC_NUM_ADDRTYPES] =
@@ -137,8 +137,7 @@ static bfd_boolean print_hex = FALSE;
   (info->endian == BFD_ENDIAN_LITTLE ? bfd_getm32 (bfd_getl32 (buf))	\
    : bfd_getb32 (buf))
 
-#define BITS(word,s,e)  (((word) << (sizeof (word) * 8 - 1 - e)) >>	\
-			 (s + (sizeof (word) * 8 - 1 - e)))
+#define BITS(word,s,e)  (((word) >> (s)) & ((1ull << ((e) - (s)) << 1) - 1))
 #define OPCODE_32BIT_INSN(word)	(BITS ((word), 27, 31))
 
 /* Functions implementation.  */
@@ -295,7 +294,7 @@ find_format_from_table (struct disassemble_info *info,
 	  if (operand->extract)
 	    value = (*operand->extract) (insn, &invalid);
 	  else
-	    value = (insn >> operand->shift) & ((1 << operand->bits) - 1);
+	    value = (insn >> operand->shift) & ((1ull << operand->bits) - 1);
 
 	  /* Check for LIMM indicator.  If it is there, then make sure
 	     we pick the right format.  */
@@ -421,7 +420,7 @@ find_format (bfd_vma                       memaddr,
              struct arc_operand_iterator * iter)
 {
   const struct arc_opcode *opcode = NULL;
-  bfd_boolean needs_limm;
+  bfd_boolean needs_limm = FALSE;
   const extInstruction_t *einsn, *i;
   unsigned limm = 0;
   struct arc_disassemble_info *arc_infop = info->private_data;
@@ -437,8 +436,9 @@ find_format (bfd_vma                       memaddr,
 	  opcode = arcExtMap_genOpcode (i, isa_mask, &errmsg);
 	  if (opcode == NULL)
 	    {
-	      (*info->fprintf_func) (info->stream, "\
-An error occured while generating the extension instruction operations");
+	      (*info->fprintf_func) (info->stream,
+				     _("An error occured while generating the "
+				       "extension instruction operations"));
 	      *opcode_result = NULL;
 	      return FALSE;
 	    }
@@ -453,7 +453,7 @@ An error occured while generating the extension instruction operations");
     opcode = find_format_from_table (info, arc_opcodes, insn, *insn_len,
 				     isa_mask, &needs_limm, TRUE);
 
-  if (needs_limm && opcode != NULL)
+  if (opcode != NULL && needs_limm)
     {
       bfd_byte buffer[4];
       int status;
@@ -483,7 +483,7 @@ An error occured while generating the extension instruction operations");
 
   /* Update private data.  */
   arc_infop->opcode = opcode;
-  arc_infop->limm = (needs_limm) ? limm : 0;
+  arc_infop->limm = limm;
   arc_infop->limm_p = needs_limm;
 
   return TRUE;
@@ -672,7 +672,7 @@ arc_insn_length (bfd_byte msb, bfd_byte lsb, struct disassemble_info *info)
       break;
 
     default:
-      abort ();
+      return 0;
     }
 }
 
@@ -1009,7 +1009,6 @@ print_insn_arc (bfd_vma memaddr,
      the number of bytes objdump should display on a single line.  If
      the instruction decoder sets this, it should always set it to
      the same value in order to get reasonable looking output.  */
-
   info->bytes_per_line  = 8;
 
   /* In the next lines, we set two info variables control the way
@@ -1017,7 +1016,6 @@ print_insn_arc (bfd_vma memaddr,
      8 and bytes_per_chunk is 4, the output will look like this:
      00:   00000000 00000000
      with the chunks displayed according to "display_endian".  */
-
   if (info->section
       && !(info->section->flags & SEC_CODE))
     {
@@ -1072,13 +1070,16 @@ print_insn_arc (bfd_vma memaddr,
 	  (*info->fprintf_func) (info->stream, ".word\t0x%08lx", data);
 	  break;
 	default:
-	  abort ();
+	  return -1;
 	}
       return size;
     }
 
   insn_len = arc_insn_length (buffer[highbyte], buffer[lowbyte], info);
   pr_debug ("instruction length = %d bytes\n", insn_len);
+  if (insn_len == 0)
+    return -1;
+
   arc_infop = info->private_data;
   arc_infop->insn_len = insn_len;
 
@@ -1131,7 +1132,7 @@ print_insn_arc (bfd_vma memaddr,
 
     default:
       /* There is no instruction whose length is not 2, 4, 6, or 8.  */
-      abort ();
+      return -1;
     }
 
   pr_debug ("instruction value = %llx\n", insn);
@@ -1159,24 +1160,28 @@ print_insn_arc (bfd_vma memaddr,
 	  (*info->fprintf_func) (info->stream, ".shor\t%#04llx",
 				 insn & 0xffff);
 	  break;
+
 	case 4:
 	  (*info->fprintf_func) (info->stream, ".word\t%#08llx",
 				 insn & 0xffffffff);
 	  break;
+
 	case 6:
 	  (*info->fprintf_func) (info->stream, ".long\t%#08llx",
 				 insn & 0xffffffff);
 	  (*info->fprintf_func) (info->stream, ".long\t%#04llx",
 				 (insn >> 32) & 0xffff);
 	  break;
+
 	case 8:
 	  (*info->fprintf_func) (info->stream, ".long\t%#08llx",
 				 insn & 0xffffffff);
 	  (*info->fprintf_func) (info->stream, ".long\t%#08llx",
 				 insn >> 32);
 	  break;
+
 	default:
-	  abort ();
+	  return -1;
 	}
 
       info->insn_type = dis_noninsn;

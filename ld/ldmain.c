@@ -1,5 +1,5 @@
 /* Main program of GNU linker.
-   Copyright (C) 1991-2019 Free Software Foundation, Inc.
+   Copyright (C) 1991-2020 Free Software Foundation, Inc.
    Written by Steve Chamberlain steve@cygnus.com
 
    This file is part of the GNU Binutils.
@@ -25,6 +25,7 @@
 #include "libiberty.h"
 #include "progress.h"
 #include "bfdlink.h"
+#include "ctf-api.h"
 #include "filenames.h"
 
 #include "ld.h"
@@ -148,7 +149,9 @@ static struct bfd_link_callbacks link_callbacks =
   einfo,
   info_msg,
   minfo,
-  ldlang_override_segment_assignment
+  ldlang_override_segment_assignment,
+  ldlang_ctf_apply_strsym,
+  ldlang_write_ctf_late
 };
 
 static bfd_assert_handler_type default_bfd_assert_handler;
@@ -812,13 +815,13 @@ add_archive_element (struct bfd_link_info *info,
   input = (lang_input_statement_type *)
       xcalloc (1, sizeof (lang_input_statement_type));
   input->header.type = lang_input_statement_enum;
-  input->filename = abfd->filename;
-  input->local_sym_name = abfd->filename;
+  input->filename = bfd_get_filename (abfd);
+  input->local_sym_name = bfd_get_filename (abfd);
   input->the_bfd = abfd;
 
-  parent = abfd->my_archive->usrdata;
+  parent = bfd_usrdata (abfd->my_archive);
   if (parent != NULL && !parent->flags.reload)
-    parent->next = (lang_statement_union_type *) input;
+    parent->next = input;
 
   /* Save the original data for trace files/tries below, as plugins
      (if enabled) may possibly alter it to point to a replacement
@@ -836,7 +839,7 @@ add_archive_element (struct bfd_link_info *info,
 	      /* Don't claim new IR symbols after all IR symbols have
 		 been claimed.  */
 	      if (verbose)
-		info_msg ("%pI: no new IR symbols to claimi\n",
+		info_msg ("%pI: no new IR symbols to claim\n",
 			  &orig_input);
 	      input->flags.claimed = 0;
 	      return FALSE;
@@ -1346,8 +1349,7 @@ undefined_symbol (struct bfd_link_info *info,
   else
     {
       error_count = 0;
-      if (error_name != NULL)
-	free (error_name);
+      free (error_name);
       error_name = xstrdup (name);
     }
 

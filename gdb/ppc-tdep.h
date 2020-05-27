@@ -1,6 +1,6 @@
 /* Target-dependent code for GDB, the GNU debugger.
 
-   Copyright (C) 2000-2019 Free Software Foundation, Inc.
+   Copyright (C) 2000-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -433,7 +433,7 @@ extern int ppc_process_record (struct gdbarch *gdbarch,
 /* Instruction size.  */
 #define PPC_INSN_SIZE 4
 
-/* Estimate for the maximum number of instrctions in a function epilogue.  */
+/* Estimate for the maximum number of instructions in a function epilogue.  */
 #define PPC_MAX_EPILOGUE_INSTRUCTIONS  52
 
 #endif /* ppc-tdep.h */

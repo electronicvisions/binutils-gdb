@@ -1,6 +1,6 @@
 /* Fortran language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 1993-2019 Free Software Foundation, Inc.
+   Copyright (C) 1993-2020 Free Software Foundation, Inc.
 
    Contributed by Motorola.  Adapted from the C parser by Farooq Butt
    (fmbutt@engage.sps.mot.com).
@@ -59,7 +59,7 @@ f_get_encoding (struct type *type)
       encoding = target_charset (get_type_arch (type));
       break;
     case 4:
-      if (gdbarch_byte_order (get_type_arch (type)) == BFD_ENDIAN_BIG)
+      if (type_byte_order (type) == BFD_ENDIAN_BIG)
 	encoding = "UTF-32BE";
       else
 	encoding = "UTF-32LE";
@@ -243,7 +243,8 @@ f_collect_symbol_completion_matches (completion_tracker &tracker,
 }
 
 /* Special expression evaluation cases for Fortran.  */
-struct value *
+
+static struct value *
 evaluate_subexp_f (struct type *expect_type, struct expression *exp,
 		   int *pos, enum noside noside)
 {
@@ -267,7 +268,7 @@ evaluate_subexp_f (struct type *expect_type, struct expression *exp,
       if (noside == EVAL_SKIP)
 	return eval_skip_value (exp);
       type = value_type (arg1);
-      switch (TYPE_CODE (type))
+      switch (type->code ())
 	{
 	case TYPE_CODE_FLT:
 	  {
@@ -291,9 +292,9 @@ evaluate_subexp_f (struct type *expect_type, struct expression *exp,
       if (noside == EVAL_SKIP)
 	return eval_skip_value (exp);
       type = value_type (arg1);
-      if (TYPE_CODE (type) != TYPE_CODE (value_type (arg2)))
+      if (type->code () != value_type (arg2)->code ())
 	error (_("non-matching types for parameters to MOD ()"));
-      switch (TYPE_CODE (type))
+      switch (type->code ())
 	{
 	case TYPE_CODE_FLT:
 	  {
@@ -324,7 +325,7 @@ evaluate_subexp_f (struct type *expect_type, struct expression *exp,
 	if (noside == EVAL_SKIP)
 	  return eval_skip_value (exp);
 	type = value_type (arg1);
-	if (TYPE_CODE (type) != TYPE_CODE_FLT)
+	if (type->code () != TYPE_CODE_FLT)
 	  error (_("argument to CEILING must be of type float"));
 	double val
 	  = target_float_to_host_double (value_contents (arg1),
@@ -339,7 +340,7 @@ evaluate_subexp_f (struct type *expect_type, struct expression *exp,
 	if (noside == EVAL_SKIP)
 	  return eval_skip_value (exp);
 	type = value_type (arg1);
-	if (TYPE_CODE (type) != TYPE_CODE_FLT)
+	if (type->code () != TYPE_CODE_FLT)
 	  error (_("argument to FLOOR must be of type float"));
 	double val
 	  = target_float_to_host_double (value_contents (arg1),
@@ -355,10 +356,10 @@ evaluate_subexp_f (struct type *expect_type, struct expression *exp,
 	if (noside == EVAL_SKIP)
 	  return eval_skip_value (exp);
 	type = value_type (arg1);
-	if (TYPE_CODE (type) != TYPE_CODE (value_type (arg2)))
+	if (type->code () != value_type (arg2)->code ())
 	  error (_("non-matching types for parameters to MODULO ()"));
         /* MODULO(A, P) = A - FLOOR (A / P) * P */
-	switch (TYPE_CODE (type))
+	switch (type->code ())
 	  {
 	  case TYPE_CODE_INT:
 	    {
@@ -398,7 +399,7 @@ evaluate_subexp_f (struct type *expect_type, struct expression *exp,
       arg1 = evaluate_subexp (NULL, exp, pos, EVAL_AVOID_SIDE_EFFECTS);
       type = value_type (arg1);
 
-      switch (TYPE_CODE (type))
+      switch (type->code ())
         {
           case TYPE_CODE_STRUCT:
           case TYPE_CODE_UNION:
@@ -411,7 +412,7 @@ evaluate_subexp_f (struct type *expect_type, struct expression *exp,
         return value_from_longest (builtin_type (exp->gdbarch)->builtin_int,
 				   TYPE_LENGTH (type));
       return value_from_longest (builtin_type (exp->gdbarch)->builtin_int,
-				 TYPE_LENGTH (TYPE_TARGET_TYPE(type)));
+				 TYPE_LENGTH (TYPE_TARGET_TYPE (type)));
     }
 
   /* Should be unreachable.  */
@@ -424,9 +425,9 @@ static bool
 f_is_string_type_p (struct type *type)
 {
   type = check_typedef (type);
-  return (TYPE_CODE (type) == TYPE_CODE_STRING
-	  || (TYPE_CODE (type) == TYPE_CODE_ARRAY
-	      && TYPE_CODE (TYPE_TARGET_TYPE (type)) == TYPE_CODE_CHAR));
+  return (type->code () == TYPE_CODE_STRING
+	  || (type->code () == TYPE_CODE_ARRAY
+	      && TYPE_TARGET_TYPE (type)->code () == TYPE_CODE_CHAR));
 }
 
 /* Special expression lengths for Fortran.  */
@@ -644,8 +645,8 @@ extern const struct language_defn f_language_defn =
   f_printstr,			/* function to print string constant */
   f_emit_char,			/* Function to print a single character */
   f_print_type,			/* Print a type using appropriate syntax */
-  default_print_typedef,	/* Print a typedef using appropriate syntax */
-  f_val_print,			/* Print a value using appropriate syntax */
+  f_print_typedef,		/* Print a typedef using appropriate syntax */
+  f_value_print_innner,		/* la_value_print_inner */
   c_value_print,		/* FIXME */
   default_read_var_value,	/* la_read_var_value */
   NULL,				/* Language specific skip_trampoline */
@@ -671,11 +672,10 @@ extern const struct language_defn f_language_defn =
   f_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
-  default_get_string,
   c_watch_location_expression,
-  NULL,				/* la_get_symbol_name_matcher */
+  cp_get_symbol_name_matcher,	/* la_get_symbol_name_matcher */
   iterate_over_symbols,
-  default_search_name_hash,
+  cp_search_name_hash,
   &default_varobj_ops,
   NULL,
   NULL,
@@ -741,14 +741,16 @@ build_fortran_types (struct gdbarch *gdbarch)
       = arch_type (gdbarch, TYPE_CODE_ERROR, 128, "real*16");
 
   builtin_f_type->builtin_complex_s8
-    = arch_complex_type (gdbarch, "complex*8",
-			 builtin_f_type->builtin_real);
+    = init_complex_type ("complex*8", builtin_f_type->builtin_real);
   builtin_f_type->builtin_complex_s16
-    = arch_complex_type (gdbarch, "complex*16",
-			 builtin_f_type->builtin_real_s8);
-  builtin_f_type->builtin_complex_s32
-    = arch_complex_type (gdbarch, "complex*32",
-			 builtin_f_type->builtin_real_s16);
+    = init_complex_type ("complex*16", builtin_f_type->builtin_real_s8);
+
+  if (builtin_f_type->builtin_real_s16->code () == TYPE_CODE_ERROR)
+    builtin_f_type->builtin_complex_s32
+      = arch_type (gdbarch, TYPE_CODE_ERROR, 256, "complex*32");
+  else
+    builtin_f_type->builtin_complex_s32
+      = init_complex_type ("complex*32", builtin_f_type->builtin_real_s16);
 
   return builtin_f_type;
 }
@@ -761,8 +763,9 @@ builtin_f_type (struct gdbarch *gdbarch)
   return (const struct builtin_f_type *) gdbarch_data (gdbarch, f_type_data);
 }
 
+void _initialize_f_language ();
 void
-_initialize_f_language (void)
+_initialize_f_language ()
 {
   f_type_data = gdbarch_data_register_post_init (build_fortran_types);
 }
@@ -799,7 +802,7 @@ fortran_argument_convert (struct value *value, bool is_artificial)
 struct type *
 fortran_preserve_arg_pointer (struct value *arg, struct type *type)
 {
-  if (TYPE_CODE (value_type (arg)) == TYPE_CODE_PTR)
+  if (value_type (arg)->code () == TYPE_CODE_PTR)
     return value_type (arg);
   return type;
 }

@@ -1,5 +1,5 @@
 /* Linker file opening and searching.
-   Copyright (C) 1991-2019 Free Software Foundation, Inc.
+   Copyright (C) 1991-2020 Free Software Foundation, Inc.
 
    This file is part of the GNU Binutils.
 
@@ -21,6 +21,7 @@
 #include "sysdep.h"
 #include "bfd.h"
 #include "bfdlink.h"
+#include "ctf-api.h"
 #include "safe-ctype.h"
 #include "ld.h"
 #include "ldmisc.h"
@@ -239,8 +240,8 @@ ldfile_try_open_bfd (const char *attempt,
 				skip = 1;
 			    }
 			  free (arg1);
-			  if (arg2) free (arg2);
-			  if (arg3) free (arg3);
+			  free (arg2);
+			  free (arg3);
 			  break;
 			case NAME:
 			case LNAME:
@@ -249,8 +250,7 @@ ldfile_try_open_bfd (const char *attempt,
 			  free (yylval.name);
 			  break;
 			case INT:
-			  if (yylval.bigint.str)
-			    free (yylval.bigint.str);
+			  free (yylval.bigint.str);
 			  break;
 			}
 		      token = yylex ();
@@ -301,7 +301,7 @@ ldfile_try_open_bfd (const char *attempt,
 	    }
 	}
     }
-success:
+ success:
 #ifdef ENABLE_PLUGINS
   /* If plugins are active, they get first chance to claim
      any successfully-opened input file.  We skip archives
@@ -415,7 +415,24 @@ ldfile_open_file (lang_input_statement_type *entry)
       search_arch_type *arch;
       bfd_boolean found = FALSE;
 
-      /* Try to open <filename><suffix> or lib<filename><suffix>.a */
+      /* If extra_search_path is set, entry->filename is a relative path.
+         Search the directory of the current linker script before searching
+         other paths. */
+      if (entry->extra_search_path)
+        {
+          char *path = concat (entry->extra_search_path, slash, entry->filename,
+                               (const char *)0);
+          if (ldfile_try_open_bfd (path, entry))
+            {
+              entry->filename = path;
+              entry->flags.search_dirs = FALSE;
+              return;
+            }
+
+	  free (path);
+        }
+
+      /* Try to open <filename><suffix> or lib<filename><suffix>.a.  */
       for (arch = search_arch_head; arch != NULL; arch = arch->next)
 	{
 	  found = ldfile_open_file_search (arch->name, entry, "lib", ".a");
@@ -444,6 +461,22 @@ ldfile_open_file (lang_input_statement_type *entry)
 		   entry->local_sym_name, ld_sysroot);
 	  else
 	    einfo (_("%P: cannot find %s\n"), entry->local_sym_name);
+
+	  /* PR 25747: Be kind to users who forgot to add the
+	     "lib" prefix to their library when it was created.  */
+	  for (arch = search_arch_head; arch != NULL; arch = arch->next)
+	    {
+	      if (ldfile_open_file_search (arch->name, entry, "", ".a"))
+		{
+		  const char * base = lbasename (entry->filename);
+
+		  einfo (_("%P: note to link with %s use -l:%s or rename it to lib%s\n"),
+			 entry->filename, base, base);
+		  bfd_close (entry->the_bfd);
+		  entry->the_bfd = NULL;
+		  break;
+		}
+	    }
 	  entry->flags.missing_file = TRUE;
 	  input_flags.missing_file = TRUE;
 	}

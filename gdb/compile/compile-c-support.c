@@ -1,6 +1,6 @@
 /* C/C++ language support for compilation.
 
-   Copyright (C) 2014-2019 Free Software Foundation, Inc.
+   Copyright (C) 2014-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -22,12 +22,12 @@
 #include "compile-c.h"
 #include "compile-cplus.h"
 #include "compile.h"
-#include "gdb-dlfcn.h"
 #include "c-lang.h"
 #include "macrotab.h"
 #include "macroscope.h"
 #include "regcache.h"
 #include "gdbsupport/function-view.h"
+#include "gdbsupport/gdb-dlfcn.h"
 #include "gdbsupport/preprocessor.h"
 #include "gdbarch.h"
 
@@ -242,7 +242,7 @@ generate_register_struct (struct ui_file *stream, struct gdbarch *gdbarch,
 	       maximally-aligned array of the correct size.  */
 
 	    fputs_unfiltered ("  ", stream);
-	    switch (TYPE_CODE (regtype))
+	    switch (regtype->code ())
 	      {
 	      case TYPE_CODE_PTR:
 		fprintf_filtered (stream, "__gdb_uintptr %s",

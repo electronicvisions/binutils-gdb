@@ -1,5 +1,5 @@
 /* MI Command Set - varobj commands.
-   Copyright (C) 2000-2019 Free Software Foundation, Inc.
+   Copyright (C) 2000-2020 Free Software Foundation, Inc.
 
    Contributed by Cygnus Solutions (a Red Hat company).
 
@@ -32,8 +32,6 @@
 #include "mi-parse.h"
 #include "gdbsupport/gdb_optional.h"
 #include "inferior.h"
-
-extern unsigned int varobjdebug;		/* defined in varobj.c.  */
 
 static void varobj_update_one (struct varobj *var,
 			       enum print_values print_values,
@@ -342,9 +340,9 @@ mi_print_value_p (struct varobj *var, enum print_values print_values)
 
       /* For PRINT_SIMPLE_VALUES, only print the value if it has a type
 	 and that type is not a compound type.  */
-      return (TYPE_CODE (type) != TYPE_CODE_ARRAY
-	      && TYPE_CODE (type) != TYPE_CODE_STRUCT
-	      && TYPE_CODE (type) != TYPE_CODE_UNION);
+      return (type->code () != TYPE_CODE_ARRAY
+	      && type->code () != TYPE_CODE_STRUCT
+	      && type->code () != TYPE_CODE_UNION);
     }
 }
 

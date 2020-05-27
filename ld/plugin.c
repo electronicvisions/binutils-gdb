@@ -1,5 +1,5 @@
 /* Plugin control for the GNU linker.
-   Copyright (C) 2010-2019 Free Software Foundation, Inc.
+   Copyright (C) 2010-2020 Free Software Foundation, Inc.
 
    This file is part of the GNU Binutils.
 
@@ -23,6 +23,7 @@
 #include "bfd.h"
 #include "bfdlink.h"
 #include "bfdver.h"
+#include "ctf-api.h"
 #include "ld.h"
 #include "ldmain.h"
 #include "ldmisc.h"
@@ -174,7 +175,7 @@ static bfd_boolean plugin_notice (struct bfd_link_info *,
 				  struct bfd_link_hash_entry *,
 				  bfd *, asection *, bfd_vma, flagword);
 
-static const bfd_target * plugin_object_p (bfd *);
+static bfd_cleanup plugin_object_p (bfd *);
 
 #if !defined (HAVE_DLFCN_H) && defined (HAVE_WINDOWS_H)
 
@@ -335,7 +336,7 @@ plugin_get_ir_dummy_bfd (const char *name, bfd *srctemplate)
 	    return abfd;
 	}
     }
-report_error:
+ report_error:
   einfo (_("%F%P: could not create dummy IR bfd: %E\n"));
   return NULL;
 }
@@ -403,12 +404,6 @@ asymbol_from_plugin_symbol (bfd *abfd, asymbol *asym,
       flags = BSF_GLOBAL;
       section = bfd_com_section_ptr;
       asym->value = ldsym->size;
-      /* For ELF targets, set alignment of common symbol to 1.  */
-      if (bfd_get_flavour (abfd) == bfd_target_elf_flavour)
-	{
-	  ((elf_symbol_type *) asym)->internal_elf_sym.st_shndx = SHN_COMMON;
-	  ((elf_symbol_type *) asym)->internal_elf_sym.st_value = 1;
-	}
       break;
 
     default:
@@ -417,7 +412,6 @@ asymbol_from_plugin_symbol (bfd *abfd, asymbol *asym,
   asym->flags = flags;
   asym->section = section;
 
-  /* Visibility only applies on ELF targets.  */
   if (bfd_get_flavour (abfd) == bfd_target_elf_flavour)
     {
       elf_symbol_type *elfsym = elf_symbol_from (abfd, asym);
@@ -425,6 +419,13 @@ asymbol_from_plugin_symbol (bfd *abfd, asymbol *asym,
 
       if (!elfsym)
 	einfo (_("%F%P: %s: non-ELF symbol in ELF BFD!\n"), asym->name);
+
+      if (ldsym->def == LDPK_COMMON)
+	{
+	  elfsym->internal_elf_sym.st_shndx = SHN_COMMON;
+	  elfsym->internal_elf_sym.st_value = 1;
+	}
+
       switch (ldsym->visibility)
 	{
 	default:
@@ -445,9 +446,7 @@ asymbol_from_plugin_symbol (bfd *abfd, asymbol *asym,
 	  visibility = STV_HIDDEN;
 	  break;
 	}
-      elfsym->internal_elf_sym.st_other
-	= (visibility | (elfsym->internal_elf_sym.st_other
-			 & ~ELF_ST_VISIBILITY (-1)));
+      elfsym->internal_elf_sym.st_other |= visibility;
     }
 
   return LDPS_OK;
@@ -749,7 +748,7 @@ get_symbols (const void *handle, int nsyms, struct ld_plugin_symbol *syms,
       if (syms[n].def != LDPK_UNDEF && syms[n].def != LDPK_WEAKUNDEF)
 	{
 	  blhe = h;
-	  if (blhe)
+	  if (blhe && link_info.wrap_hash != NULL)
 	    {
 	      /* Check if a symbol is a wrapper symbol.  */
 	      struct bfd_link_hash_entry *unwrap
@@ -1165,7 +1164,12 @@ plugin_strdup (bfd *abfd, const char *str)
   return copy;
 }
 
-static const bfd_target *
+static void
+plugin_cleanup (bfd *abfd ATTRIBUTE_UNUSED)
+{
+}
+
+static bfd_cleanup
 plugin_object_p (bfd *ibfd)
 {
   int claimed;
@@ -1180,14 +1184,14 @@ plugin_object_p (bfd *ibfd)
   if (ibfd->plugin_format != bfd_plugin_unknown)
     {
       if (ibfd->plugin_format == bfd_plugin_yes)
-	return ibfd->plugin_dummy_bfd->xvec;
+	return plugin_cleanup;
       else
 	return NULL;
     }
 
   /* We create a dummy BFD, initially empty, to house whatever symbols
      the plugin may want to add.  */
-  abfd = plugin_get_ir_dummy_bfd (ibfd->filename, ibfd);
+  abfd = plugin_get_ir_dummy_bfd (bfd_get_filename (ibfd), ibfd);
 
   input = bfd_alloc (abfd, sizeof (*input));
   if (input == NULL)
@@ -1197,7 +1201,7 @@ plugin_object_p (bfd *ibfd)
   if (!bfd_plugin_open_input (ibfd, &file))
     return NULL;
 
-  if (file.name == ibfd->filename)
+  if (file.name == bfd_get_filename (ibfd))
     {
       /* We must copy filename attached to ibfd if it is not an archive
 	 member since it may be freed by bfd_close below.  */
@@ -1213,7 +1217,7 @@ plugin_object_p (bfd *ibfd)
   input->use_mmap = FALSE;
   input->offset = file.offset;
   input->filesize = file.filesize;
-  input->name = plugin_strdup (abfd, ibfd->filename);
+  input->name = plugin_strdup (abfd, bfd_get_filename (ibfd));
 
   claimed = 0;
 
@@ -1240,7 +1244,8 @@ plugin_object_p (bfd *ibfd)
       ibfd->plugin_format = bfd_plugin_yes;
       ibfd->plugin_dummy_bfd = abfd;
       bfd_make_readable (abfd);
-      return abfd->xvec;
+      abfd->no_export = ibfd->no_export;
+      return plugin_cleanup;
     }
   else
     {

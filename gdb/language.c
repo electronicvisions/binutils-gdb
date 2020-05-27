@@ -1,6 +1,6 @@
 /* Multiple source language support for GDB.
 
-   Copyright (C) 1991-2019 Free Software Foundation, Inc.
+   Copyright (C) 1991-2020 Free Software Foundation, Inc.
 
    Contributed by the Department of Computer Science at the State University
    of New York at Buffalo.
@@ -112,10 +112,9 @@ static const char *language;
 static const char *range;
 static const char *case_sensitive;
 
-/* Warning issued when current_language and the language of the current
-   frame do not match.  */
-char lang_frame_mismatch_warn[] =
-"Warning: the current language does not match this frame.";
+/* See language.h.  */
+const char lang_frame_mismatch_warn[] =
+N_("Warning: the current language does not match this frame.");
 
 /* This page contains the functions corresponding to GDB commands
    and their helpers.  */
@@ -147,7 +146,7 @@ show_language_command (struct ui_file *file, int from_tty,
       if (flang != language_unknown
 	  && language_mode == language_mode_manual
 	  && current_language->la_language != flang)
-	printf_filtered ("%s\n", lang_frame_mismatch_warn);
+	printf_filtered ("%s\n", _(lang_frame_mismatch_warn));
     }
 }
 
@@ -411,7 +410,7 @@ language_info (int quietly)
 int
 pointer_type (struct type *type)
 {
-  return TYPE_CODE (type) == TYPE_CODE_PTR || TYPE_IS_REFERENCE (type);
+  return type->code () == TYPE_CODE_PTR || TYPE_IS_REFERENCE (type);
 }
 
 
@@ -501,19 +500,6 @@ language_str (enum language lang)
   return languages[lang]->la_name;
 }
 
-static void
-set_check (const char *ignore, int from_tty)
-{
-  printf_unfiltered (
-     "\"set check\" must be followed by the name of a check subcommand.\n");
-  help_list (setchecklist, "set check ", all_commands, gdb_stdout);
-}
-
-static void
-show_check (const char *ignore, int from_tty)
-{
-  cmd_show_list (showchecklist, from_tty, "");
-}
 
 
 /* Build and install the "set language LANG" command.  */
@@ -653,21 +639,23 @@ language_class_name_from_physname (const struct language_defn *lang,
   return NULL;
 }
 
-/* Return non-zero if TYPE should be passed (and returned) by
-   reference at the language level.  */
-int
+/* Return information about whether TYPE should be passed
+   (and returned) by reference at the language level.  */
+
+struct language_pass_by_ref_info
 language_pass_by_reference (struct type *type)
 {
   return current_language->la_pass_by_reference (type);
 }
 
-/* Return zero; by default, types are passed by value at the language
-   level.  The target ABI may pass or return some structs by reference
-   independent of this.  */
-int
+/* Return a default struct that provides pass-by-reference information
+   about the given TYPE.  Languages should update the default values
+   as appropriate.  */
+
+struct language_pass_by_ref_info
 default_pass_by_reference (struct type *type)
 {
-  return 0;
+  return {};
 }
 
 /* Return the default string containing the list of characters
@@ -683,20 +671,15 @@ default_word_break_characters (void)
 /* Print the index of array elements using the C99 syntax.  */
 
 void
-default_print_array_index (struct value *index_value, struct ui_file *stream,
+default_print_array_index (struct type *index_type, LONGEST index,
+			   struct ui_file *stream,
 			   const struct value_print_options *options)
 {
+  struct value *index_value = value_from_longest (index_type, index);
+
   fprintf_filtered (stream, "[");
   LA_VALUE_PRINT (index_value, stream, options);
   fprintf_filtered (stream, "] = ");
-}
-
-void
-default_get_string (struct value *value,
-		    gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
-		    int *length, struct type **char_type, const char **charset)
-{
-  error (_("Getting a string is unsupported in this language."));
 }
 
 /* See language.h.  */
@@ -706,14 +689,14 @@ default_symbol_name_matcher (const char *symbol_search_name,
 			     const lookup_name_info &lookup_name,
 			     completion_match_result *comp_match_res)
 {
-  const std::string &name = lookup_name.name ();
+  gdb::string_view name = lookup_name.name ();
   completion_match_for_lcd *match_for_lcd
     = (comp_match_res != NULL ? &comp_match_res->match_for_lcd : NULL);
   strncmp_iw_mode mode = (lookup_name.completion_mode ()
 			  ? strncmp_iw_mode::NORMAL
 			  : strncmp_iw_mode::MATCH_PARAMS);
 
-  if (strncmp_iw_with_mode (symbol_search_name, name.c_str (), name.size (),
+  if (strncmp_iw_with_mode (symbol_search_name, name.data (), name.size (),
 			    mode, language_minimal, match_for_lcd) == 0)
     {
       if (comp_match_res != NULL)
@@ -730,12 +713,12 @@ bool
 default_is_string_type_p (struct type *type)
 {
   type = check_typedef (type);
-  while (TYPE_CODE (type) == TYPE_CODE_REF)
+  while (type->code () == TYPE_CODE_REF)
     {
       type = TYPE_TARGET_TYPE (type);
       type = check_typedef (type);
     }
-  return (TYPE_CODE (type)  == TYPE_CODE_STRING);
+  return (type->code ()  == TYPE_CODE_STRING);
 }
 
 /* See language.h.  */
@@ -799,14 +782,12 @@ unk_lang_print_type (struct type *type, const char *varstring,
 }
 
 static void
-unk_lang_val_print (struct type *type,
-		    int embedded_offset, CORE_ADDR address,
-		    struct ui_file *stream, int recurse,
-		    struct value *val,
-		    const struct value_print_options *options)
+unk_lang_value_print_inner (struct value *val,
+			    struct ui_file *stream, int recurse,
+			    const struct value_print_options *options)
 {
   error (_("internal error - unimplemented "
-	   "function unk_lang_val_print called."));
+	   "function unk_lang_value_print_inner called."));
 }
 
 static void
@@ -866,7 +847,7 @@ const struct language_defn unknown_language_defn =
   unk_lang_emit_char,
   unk_lang_print_type,		/* Print a type using appropriate syntax */
   default_print_typedef,	/* Print a typedef using appropriate syntax */
-  unk_lang_val_print,		/* Print a value using appropriate syntax */
+  unk_lang_value_print_inner,	/* la_value_print_inner */
   unk_lang_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   unk_lang_trampoline,		/* Language specific skip_trampoline */
@@ -886,7 +867,6 @@ const struct language_defn unknown_language_defn =
   unknown_language_arch_info,	/* la_language_arch_info.  */
   default_print_array_index,
   default_pass_by_reference,
-  default_get_string,
   c_watch_location_expression,
   NULL,				/* la_get_symbol_name_matcher */
   iterate_over_symbols,
@@ -918,7 +898,7 @@ const struct language_defn auto_language_defn =
   unk_lang_emit_char,
   unk_lang_print_type,		/* Print a type using appropriate syntax */
   default_print_typedef,	/* Print a typedef using appropriate syntax */
-  unk_lang_val_print,		/* Print a value using appropriate syntax */
+  unk_lang_value_print_inner,	/* la_value_print_inner */
   unk_lang_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   unk_lang_trampoline,		/* Language specific skip_trampoline */
@@ -938,7 +918,6 @@ const struct language_defn auto_language_defn =
   unknown_language_arch_info,	/* la_language_arch_info.  */
   default_print_array_index,
   default_pass_by_reference,
-  default_get_string,
   c_watch_location_expression,
   NULL,				/* la_get_symbol_name_matcher */
   iterate_over_symbols,
@@ -1005,7 +984,7 @@ language_bool_type (const struct language_defn *la,
 	{
 	  struct type *type = SYMBOL_TYPE (sym);
 
-	  if (type && TYPE_CODE (type) == TYPE_CODE_BOOL)
+	  if (type && type->code () == TYPE_CODE_BOOL)
 	    return type;
 	}
     }
@@ -1023,7 +1002,7 @@ language_lookup_primitive_type_1 (const struct language_arch_info *lai,
 
   for (p = lai->primitive_type_vector; (*p) != NULL; p++)
     {
-      if (strcmp (TYPE_NAME (*p), name) == 0)
+      if (strcmp ((*p)->name (), name) == 0)
 	return p;
     }
   return NULL;
@@ -1059,12 +1038,13 @@ language_alloc_type_symbol (enum language lang, struct type *type)
   gdb_assert (!TYPE_OBJFILE_OWNED (type));
 
   gdbarch = TYPE_OWNER (type).gdbarch;
-  symbol = GDBARCH_OBSTACK_ZALLOC (gdbarch, struct symbol);
+  symbol = new (gdbarch_obstack (gdbarch)) struct symbol ();
 
-  symbol->ginfo.name = TYPE_NAME (type);
-  symbol->ginfo.language = lang;
+  symbol->m_name = type->name ();
+  symbol->set_language (lang, nullptr);
   symbol->owner.arch = gdbarch;
   SYMBOL_OBJFILE_OWNED (symbol) = 0;
+  SYMBOL_SECTION (symbol) = 0;
   SYMBOL_TYPE (symbol) = type;
   SYMBOL_DOMAIN (symbol) = VAR_DOMAIN;
   SYMBOL_ACLASS_INDEX (symbol) = LOC_TYPEDEF;
@@ -1145,8 +1125,9 @@ language_lookup_primitive_type_as_symbol (const struct language_defn *la,
 
 /* Initialize the language routines.  */
 
+void _initialize_language ();
 void
-_initialize_language (void)
+_initialize_language ()
 {
   static const char *const type_or_range_names[]
     = { "on", "off", "warn", "auto", NULL };
@@ -1159,30 +1140,30 @@ _initialize_language (void)
 
   /* GDB commands for language specific stuff.  */
 
-  add_prefix_cmd ("check", no_class, set_check,
-		  _("Set the status of the type/range checker."),
-		  &setchecklist, "set check ", 0, &setlist);
+  add_basic_prefix_cmd ("check", no_class,
+			_("Set the status of the type/range checker."),
+			&setchecklist, "set check ", 0, &setlist);
   add_alias_cmd ("c", "check", no_class, 1, &setlist);
   add_alias_cmd ("ch", "check", no_class, 1, &setlist);
 
-  add_prefix_cmd ("check", no_class, show_check,
-		  _("Show the status of the type/range checker."),
-		  &showchecklist, "show check ", 0, &showlist);
+  add_show_prefix_cmd ("check", no_class,
+		       _("Show the status of the type/range checker."),
+		       &showchecklist, "show check ", 0, &showlist);
   add_alias_cmd ("c", "check", no_class, 1, &showlist);
   add_alias_cmd ("ch", "check", no_class, 1, &showlist);
 
   add_setshow_enum_cmd ("range", class_support, type_or_range_names,
 			&range,
-			_("Set range checking.  (on/warn/off/auto)"),
-			_("Show range checking.  (on/warn/off/auto)"),
+			_("Set range checking (on/warn/off/auto)."),
+			_("Show range checking (on/warn/off/auto)."),
 			NULL, set_range_command,
 			show_range_command,
 			&setchecklist, &showchecklist);
 
   add_setshow_enum_cmd ("case-sensitive", class_support, case_sensitive_names,
 			&case_sensitive, _("\
-Set case sensitivity in name search.  (on/off/auto)"), _("\
-Show case sensitivity in name search.  (on/off/auto)"), _("\
+Set case sensitivity in name search (on/off/auto)."), _("\
+Show case sensitivity in name search (on/off/auto)."), _("\
 For Fortran the default is off; for other languages the default is on."),
 			set_case_command,
 			show_case_command,

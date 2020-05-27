@@ -1,6 +1,6 @@
 /* Pascal language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 2000-2019 Free Software Foundation, Inc.
+   Copyright (C) 2000-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include "c-lang.h"
 #include "gdbarch.h"
+#include "cli/cli-style.h"
 
 /* All GPC versions until now (2007-09-27) also define a symbol called
    '_p_initialize'.  Check for the presence of this symbol first.  */
@@ -99,11 +100,11 @@ is_pascal_string_type (struct type *type,int *length_pos,
 		       struct type **char_type,
 		       const char **arrayname)
 {
-  if (type != NULL && TYPE_CODE (type) == TYPE_CODE_STRUCT)
+  if (type != NULL && type->code () == TYPE_CODE_STRUCT)
     {
       /* Old Borland type pascal strings from Free Pascal Compiler.  */
       /* Two fields: length and st.  */
-      if (TYPE_NFIELDS (type) == 2
+      if (type->num_fields () == 2
 	  && TYPE_FIELD_NAME (type, 0)
 	  && strcmp (TYPE_FIELD_NAME (type, 0), "length") == 0
 	  && TYPE_FIELD_NAME (type, 1)
@@ -123,7 +124,7 @@ is_pascal_string_type (struct type *type,int *length_pos,
         };
       /* GNU pascal strings.  */
       /* Three fields: Capacity, length and schema$ or _p_schema.  */
-      if (TYPE_NFIELDS (type) == 3
+      if (type->num_fields () == 3
 	  && TYPE_FIELD_NAME (type, 0)
 	  && strcmp (TYPE_FIELD_NAME (type, 0), "Capacity") == 0
 	  && TYPE_FIELD_NAME (type, 1)
@@ -140,7 +141,7 @@ is_pascal_string_type (struct type *type,int *length_pos,
 	    {
 	      *char_type = TYPE_TARGET_TYPE (TYPE_FIELD_TYPE (type, 2));
 
-	      if (TYPE_CODE (*char_type) == TYPE_CODE_ARRAY)
+	      if ((*char_type)->code () == TYPE_CODE_ARRAY)
 		*char_type = TYPE_TARGET_TYPE (*char_type);
 	    }
  	  if (arrayname)
@@ -229,7 +230,7 @@ pascal_printstr (struct ui_file *stream, struct type *type,
 		 const char *encoding, int force_ellipses,
 		 const struct value_print_options *options)
 {
-  enum bfd_endian byte_order = gdbarch_byte_order (get_type_arch (type));
+  enum bfd_endian byte_order = type_byte_order (type);
   unsigned int i;
   unsigned int things_printed = 0;
   int in_quotes = 0;
@@ -292,7 +293,9 @@ pascal_printstr (struct ui_file *stream, struct type *type,
 	      in_quotes = 0;
 	    }
 	  pascal_printchar (current_char, type, stream);
-	  fprintf_filtered (stream, " <repeats %u times>", reps);
+	  fprintf_filtered (stream, " %p[<repeats %u times>%p]",
+			    metadata_style.style ().ptr (),
+			    reps, nullptr);
 	  i = rep1 - 1;
 	  things_printed += options->repeat_count_threshold;
 	  need_comma = 1;
@@ -444,7 +447,7 @@ extern const struct language_defn pascal_language_defn =
   pascal_emit_char,		/* Print a single char */
   pascal_print_type,		/* Print a type using appropriate syntax */
   pascal_print_typedef,		/* Print a typedef using appropriate syntax */
-  pascal_val_print,		/* Print a value using appropriate syntax */
+  pascal_value_print_inner,	/* la_value_print_inner */
   pascal_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   NULL,				/* Language specific skip_trampoline */
@@ -463,7 +466,6 @@ extern const struct language_defn pascal_language_defn =
   pascal_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
-  default_get_string,
   c_watch_location_expression,
   NULL,				/* la_compare_symbol_for_completion */
   iterate_over_symbols,

@@ -1,4 +1,4 @@
-/* Copyright (C) 2013-2019 Free Software Foundation, Inc.
+/* Copyright (C) 2013-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -30,7 +30,7 @@
 
 /* Variable controlling the output of the debugging traces for
    this module.  */
-static int solib_aix_debug;
+static bool solib_aix_debug;
 
 /* Our private data in struct so_list.  */
 
@@ -303,15 +303,13 @@ solib_aix_bss_data_overlap (bfd *abfd)
      section after the .data section (the problem has only been
      observed when using the GNU linker, and the default linker
      script always places the .data and .bss sections in that order).  */
-  if (bfd_section_vma (abfd, bss_sect)
-      < bfd_section_vma (abfd, data_sect))
+  if (bfd_section_vma (bss_sect) < bfd_section_vma (data_sect))
     return 0;
 
-  if (bfd_section_vma (abfd, bss_sect)
-      < bfd_section_vma (abfd, data_sect) + bfd_get_section_size (data_sect))
-    return ((bfd_section_vma (abfd, data_sect)
-	     + bfd_get_section_size (data_sect))
-	    - bfd_section_vma (abfd, bss_sect));
+  if (bfd_section_vma (bss_sect)
+      < bfd_section_vma (data_sect) + bfd_section_size (data_sect))
+    return (bfd_section_vma (data_sect) + bfd_section_size (data_sect)
+	    - bfd_section_vma (bss_sect));
 
   return 0;
 }
@@ -324,7 +322,7 @@ solib_aix_relocate_section_addresses (struct so_list *so,
 {
   struct bfd_section *bfd_sect = sec->the_bfd_section;
   bfd *abfd = bfd_sect->owner;
-  const char *section_name = bfd_section_name (abfd, bfd_sect);
+  const char *section_name = bfd_section_name (bfd_sect);
   lm_info_aix *info = (lm_info_aix *) so->lm_info;
 
   if (strcmp (section_name, ".text") == 0)
@@ -355,17 +353,17 @@ solib_aix_relocate_section_addresses (struct so_list *so,
       CORE_ADDR data_offset = 0;
 
       if (data_sect != NULL)
-	data_offset = info->data_addr - bfd_section_vma (abfd, data_sect);
+	data_offset = info->data_addr - bfd_section_vma (data_sect);
 
-      sec->addr = bfd_section_vma (abfd, bfd_sect) + data_offset;
+      sec->addr = bfd_section_vma (bfd_sect) + data_offset;
       sec->addr += solib_aix_bss_data_overlap (abfd);
-      sec->endaddr = sec->addr + bfd_section_size (abfd, bfd_sect);
+      sec->endaddr = sec->addr + bfd_section_size (bfd_sect);
     }
   else
     {
       /* All other sections should not be relocated.  */
-      sec->addr = bfd_section_vma (abfd, bfd_sect);
-      sec->endaddr = sec->addr + bfd_section_size (abfd, bfd_sect);
+      sec->addr = bfd_section_vma (bfd_sect);
+      sec->endaddr = sec->addr + bfd_section_size (bfd_sect);
     }
 }
 
@@ -392,19 +390,15 @@ solib_aix_clear_solib (void)
 }
 
 /* Compute and return the OBJFILE's section_offset array, using
-   the associated loader info (INFO).
+   the associated loader info (INFO).  */
 
-   The resulting array is computed on the heap and must be
-   deallocated after use.  */
-
-static gdb::unique_xmalloc_ptr<struct section_offsets>
+static section_offsets
 solib_aix_get_section_offsets (struct objfile *objfile,
 			       lm_info_aix *info)
 {
   bfd *abfd = objfile->obfd;
 
-  gdb::unique_xmalloc_ptr<struct section_offsets> offsets
-    (XCNEWVEC (struct section_offsets, objfile->num_sections));
+  section_offsets offsets (objfile->section_offsets.size ());
 
   /* .text */
 
@@ -413,8 +407,8 @@ solib_aix_get_section_offsets (struct objfile *objfile,
       struct bfd_section *sect
 	= objfile->sections[objfile->sect_index_text].the_bfd_section;
 
-      offsets->offsets[objfile->sect_index_text]
-	= info->text_addr + sect->filepos - bfd_section_vma (abfd, sect);
+      offsets[objfile->sect_index_text]
+	= info->text_addr + sect->filepos - bfd_section_vma (sect);
     }
 
   /* .data */
@@ -424,8 +418,8 @@ solib_aix_get_section_offsets (struct objfile *objfile,
       struct bfd_section *sect
 	= objfile->sections[objfile->sect_index_data].the_bfd_section;
 
-      offsets->offsets[objfile->sect_index_data]
-	= info->data_addr - bfd_section_vma (abfd, sect);
+      offsets[objfile->sect_index_data]
+	= info->data_addr - bfd_section_vma (sect);
     }
 
   /* .bss
@@ -437,8 +431,8 @@ solib_aix_get_section_offsets (struct objfile *objfile,
   if (objfile->sect_index_bss != -1
       && objfile->sect_index_data != -1)
     {
-      offsets->offsets[objfile->sect_index_bss]
-	= (offsets->offsets[objfile->sect_index_data]
+      offsets[objfile->sect_index_bss]
+	= (offsets[objfile->sect_index_data]
 	   + solib_aix_bss_data_overlap (abfd));
     }
 
@@ -470,10 +464,10 @@ solib_aix_solib_create_inferior_hook (int from_tty)
   lm_info_aix &exec_info = (*library_list)[0];
   if (symfile_objfile != NULL)
     {
-      gdb::unique_xmalloc_ptr<struct section_offsets> offsets
+      section_offsets offsets
 	= solib_aix_get_section_offsets (symfile_objfile, &exec_info);
 
-      objfile_relocate (symfile_objfile, offsets.get ());
+      objfile_relocate (symfile_objfile, offsets);
     }
 }
 
@@ -617,7 +611,7 @@ solib_aix_bfd_open (const char *pathname)
     (gdb_bfd_openr_next_archived_file (archive_bfd.get (), NULL));
   while (object_bfd != NULL)
     {
-      if (member_name == object_bfd->filename)
+      if (member_name == bfd_get_filename (object_bfd.get ()))
 	break;
 
       object_bfd = gdb_bfd_openr_next_archived_file (archive_bfd.get (),
@@ -643,10 +637,10 @@ solib_aix_bfd_open (const char *pathname)
      along with appended parenthesized member name in order to allow commands
      listing all shared libraries to display.  Otherwise, we would only be
      displaying the name of the archive member object.  */
-  xfree (bfd_get_filename (object_bfd.get ()));
-  object_bfd->filename = xstrprintf ("%s%s",
-                                     bfd_get_filename (archive_bfd.get ()),
+  std::string fname = string_printf ("%s%s",
+				     bfd_get_filename (archive_bfd.get ()),
 				     sep);
+  bfd_set_filename (object_bfd.get (), fname.c_str ());
 
   return object_bfd;
 }
@@ -661,8 +655,7 @@ data_obj_section_from_objfile (struct objfile *objfile)
   struct obj_section *osect;
 
   ALL_OBJFILE_OSECTIONS (objfile, osect)
-    if (strcmp (bfd_section_name (objfile->obfd, osect->the_bfd_section),
-		".data") == 0)
+    if (strcmp (bfd_section_name (osect->the_bfd_section), ".data") == 0)
       return osect;
 
   return NULL;
@@ -726,8 +719,9 @@ show_solib_aix_debug (struct ui_file *file, int from_tty,
 /* The target_so_ops for AIX targets.  */
 struct target_so_ops solib_aix_so_ops;
 
+void _initialize_solib_aix ();
 void
-_initialize_solib_aix (void)
+_initialize_solib_aix ()
 {
   solib_aix_so_ops.relocate_section_addresses
     = solib_aix_relocate_section_addresses;

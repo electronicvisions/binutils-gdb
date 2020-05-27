@@ -1,6 +1,6 @@
 /* Cache and manage the values of registers for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2019 Free Software Foundation, Inc.
+   Copyright (C) 1986-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -101,7 +101,7 @@ init_regcache_descr (struct gdbarch *gdbarch)
 
   /* Lay out the register cache.
 
-     NOTE: cagney/2002-05-22: Only register_type() is used when
+     NOTE: cagney/2002-05-22: Only register_type () is used when
      constructing the register cache.  It is assumed that the
      register's raw size, virtual size and type length are all the
      same.  */
@@ -196,10 +196,11 @@ reg_buffer::reg_buffer (gdbarch *gdbarch, bool has_pseudo)
     }
 }
 
-regcache::regcache (gdbarch *gdbarch, const address_space *aspace_)
+regcache::regcache (process_stratum_target *target, gdbarch *gdbarch,
+		    const address_space *aspace_)
 /* The register buffers.  A read/write register cache can only hold
    [0 .. gdbarch_num_regs).  */
-  : detached_regcache (gdbarch, false), m_aspace (aspace_)
+  : detached_regcache (gdbarch, false), m_aspace (aspace_), m_target (target)
 {
   m_ptid = minus_one_ptid;
 }
@@ -320,14 +321,19 @@ reg_buffer::assert_regnum (int regnum) const
 std::forward_list<regcache *> regcache::current_regcache;
 
 struct regcache *
-get_thread_arch_aspace_regcache (ptid_t ptid, struct gdbarch *gdbarch,
+get_thread_arch_aspace_regcache (process_stratum_target *target,
+				 ptid_t ptid, struct gdbarch *gdbarch,
 				 struct address_space *aspace)
 {
+  gdb_assert (target != nullptr);
+
   for (const auto &regcache : regcache::current_regcache)
-    if (regcache->ptid () == ptid && regcache->arch () == gdbarch)
+    if (regcache->target () == target
+	&& regcache->ptid () == ptid
+	&& regcache->arch () == gdbarch)
       return regcache;
 
-  regcache *new_regcache = new regcache (gdbarch, aspace);
+  regcache *new_regcache = new regcache (target, gdbarch, aspace);
 
   regcache::current_regcache.push_front (new_regcache);
   new_regcache->set_ptid (ptid);
@@ -336,26 +342,38 @@ get_thread_arch_aspace_regcache (ptid_t ptid, struct gdbarch *gdbarch,
 }
 
 struct regcache *
-get_thread_arch_regcache (ptid_t ptid, struct gdbarch *gdbarch)
+get_thread_arch_regcache (process_stratum_target *target, ptid_t ptid,
+			  struct gdbarch *gdbarch)
 {
+  scoped_restore_current_inferior restore_current_inferior;
+  set_current_inferior (find_inferior_ptid (target, ptid));
   address_space *aspace = target_thread_address_space (ptid);
 
-  return get_thread_arch_aspace_regcache  (ptid, gdbarch, aspace);
+  return get_thread_arch_aspace_regcache (target, ptid, gdbarch, aspace);
 }
 
+static process_stratum_target *current_thread_target;
 static ptid_t current_thread_ptid;
 static struct gdbarch *current_thread_arch;
 
 struct regcache *
-get_thread_regcache (ptid_t ptid)
+get_thread_regcache (process_stratum_target *target, ptid_t ptid)
 {
-  if (!current_thread_arch || current_thread_ptid != ptid)
+  if (!current_thread_arch
+      || target != current_thread_target
+      || current_thread_ptid != ptid)
     {
+      gdb_assert (ptid != null_ptid);
+
       current_thread_ptid = ptid;
+      current_thread_target = target;
+
+      scoped_restore_current_inferior restore_current_inferior;
+      set_current_inferior (find_inferior_ptid (target, ptid));
       current_thread_arch = target_thread_architecture (ptid);
     }
 
-  return get_thread_arch_regcache (ptid, current_thread_arch);
+  return get_thread_arch_regcache (target, ptid, current_thread_arch);
 }
 
 /* See regcache.h.  */
@@ -363,7 +381,8 @@ get_thread_regcache (ptid_t ptid)
 struct regcache *
 get_thread_regcache (thread_info *thread)
 {
-  return get_thread_regcache (thread->ptid);
+  return get_thread_regcache (thread->inf->process_target (),
+			      thread->ptid);
 }
 
 struct regcache *
@@ -377,7 +396,11 @@ get_current_regcache (void)
 struct regcache *
 get_thread_regcache_for_ptid (ptid_t ptid)
 {
-  return get_thread_regcache (ptid);
+  /* This function doesn't take a process_stratum_target parameter
+     because it's a gdbsupport/ routine implemented by both gdb and
+     gdbserver.  It always refers to a ptid of the current target.  */
+  process_stratum_target *proc_target = current_inferior ()->process_target ();
+  return get_thread_regcache (proc_target, ptid);
 }
 
 /* Observer for the target_changed event.  */
@@ -412,29 +435,34 @@ regcache::regcache_thread_ptid_changed (ptid_t old_ptid, ptid_t new_ptid)
    Indicate that registers may have changed, so invalidate the cache.  */
 
 void
-registers_changed_ptid (ptid_t ptid)
+registers_changed_ptid (process_stratum_target *target, ptid_t ptid)
 {
   for (auto oit = regcache::current_regcache.before_begin (),
 	 it = std::next (oit);
        it != regcache::current_regcache.end ();
        )
     {
-      if ((*it)->ptid ().matches (ptid))
+      struct regcache *regcache = *it;
+      if ((target == nullptr || regcache->target () == target)
+	  && regcache->ptid ().matches (ptid))
 	{
-	  delete *it;
+	  delete regcache;
 	  it = regcache::current_regcache.erase_after (oit);
 	}
       else
 	oit = it++;
     }
 
-  if (current_thread_ptid.matches (ptid))
+  if ((target == nullptr || current_thread_target == target)
+      && current_thread_ptid.matches (ptid))
     {
+      current_thread_target = NULL;
       current_thread_ptid = null_ptid;
       current_thread_arch = NULL;
     }
 
-  if (inferior_ptid.matches (ptid))
+  if ((target == nullptr || current_inferior ()->process_target () == target)
+      && inferior_ptid.matches (ptid))
     {
       /* We just deleted the regcache of the current thread.  Need to
 	 forget about any frames we have cached, too.  */
@@ -447,13 +475,13 @@ registers_changed_ptid (ptid_t ptid)
 void
 registers_changed_thread (thread_info *thread)
 {
-  registers_changed_ptid (thread->ptid);
+  registers_changed_ptid (thread->inf->process_target (), thread->ptid);
 }
 
 void
 registers_changed (void)
 {
-  registers_changed_ptid (minus_one_ptid);
+  registers_changed_ptid (nullptr, minus_one_ptid);
 }
 
 void
@@ -1192,6 +1220,24 @@ regcache_read_pc (struct regcache *regcache)
   return pc_val;
 }
 
+/* See gdbsupport/common-regcache.h.  */
+
+CORE_ADDR
+regcache_read_pc_protected (regcache *regcache)
+{
+  CORE_ADDR pc;
+  try
+    {
+      pc = regcache_read_pc (regcache);
+    }
+  catch (const gdb_exception_error &ex)
+    {
+      pc = 0;
+    }
+
+  return pc;
+}
+
 void
 regcache_write_pc (struct regcache *regcache, CORE_ADDR pc)
 {
@@ -1346,7 +1392,7 @@ register_dump::dump (ui_file *file)
 	  {
 	    static const char blt[] = "builtin_type";
 
-	    t = TYPE_NAME (register_type (m_gdbarch, regnum));
+	    t = register_type (m_gdbarch, regnum)->name ();
 	    if (t == NULL)
 	      {
 		if (!footnote_register_type_name_null)
@@ -1400,6 +1446,21 @@ public:
   }
 };
 
+/* Wrapper around get_thread_arch_aspace_regcache that does some self checks.  */
+
+static void
+test_get_thread_arch_aspace_regcache (process_stratum_target *target,
+				      ptid_t ptid, struct gdbarch *gdbarch,
+				      address_space *aspace)
+{
+  struct regcache *regcache
+    = get_thread_arch_aspace_regcache (target, ptid, gdbarch, aspace);
+  SELF_CHECK (regcache != NULL);
+  SELF_CHECK (regcache->target () == target);
+  SELF_CHECK (regcache->ptid () == ptid);
+  SELF_CHECK (regcache->aspace () == aspace);
+}
+
 static void
 current_regcache_test (void)
 {
@@ -1408,47 +1469,61 @@ current_regcache_test (void)
 
   ptid_t ptid1 (1), ptid2 (2), ptid3 (3);
 
-  /* Get regcache from ptid1, a new regcache is added to
-     current_regcache.  */
-  regcache *regcache = get_thread_arch_aspace_regcache (ptid1,
-							target_gdbarch (),
-							NULL);
+  test_target_ops test_target1;
+  test_target_ops test_target2;
 
-  SELF_CHECK (regcache != NULL);
-  SELF_CHECK (regcache->ptid () == ptid1);
+  /* Get regcache from (target1,ptid1), a new regcache is added to
+     current_regcache.  */
+  test_get_thread_arch_aspace_regcache (&test_target1, ptid1,
+					target_gdbarch (),
+					NULL);
   SELF_CHECK (regcache_access::current_regcache_size () == 1);
 
-  /* Get regcache from ptid2, a new regcache is added to
+  /* Get regcache from (target1,ptid2), a new regcache is added to
      current_regcache.  */
-  regcache = get_thread_arch_aspace_regcache (ptid2,
-					      target_gdbarch (),
-					      NULL);
-  SELF_CHECK (regcache != NULL);
-  SELF_CHECK (regcache->ptid () == ptid2);
+  test_get_thread_arch_aspace_regcache (&test_target1, ptid2,
+					target_gdbarch (),
+					NULL);
   SELF_CHECK (regcache_access::current_regcache_size () == 2);
 
-  /* Get regcache from ptid3, a new regcache is added to
+  /* Get regcache from (target1,ptid3), a new regcache is added to
      current_regcache.  */
-  regcache = get_thread_arch_aspace_regcache (ptid3,
-					      target_gdbarch (),
-					      NULL);
-  SELF_CHECK (regcache != NULL);
-  SELF_CHECK (regcache->ptid () == ptid3);
+  test_get_thread_arch_aspace_regcache (&test_target1, ptid3,
+					target_gdbarch (),
+					NULL);
   SELF_CHECK (regcache_access::current_regcache_size () == 3);
 
-  /* Get regcache from ptid2 again, nothing is added to
+  /* Get regcache from (target1,ptid2) again, nothing is added to
      current_regcache.  */
-  regcache = get_thread_arch_aspace_regcache (ptid2,
-					      target_gdbarch (),
-					      NULL);
-  SELF_CHECK (regcache != NULL);
-  SELF_CHECK (regcache->ptid () == ptid2);
+  test_get_thread_arch_aspace_regcache (&test_target1, ptid2,
+					target_gdbarch (),
+					NULL);
   SELF_CHECK (regcache_access::current_regcache_size () == 3);
 
-  /* Mark ptid2 is changed, so regcache of ptid2 should be removed from
-     current_regcache.  */
-  registers_changed_ptid (ptid2);
-  SELF_CHECK (regcache_access::current_regcache_size () == 2);
+  /* Get regcache from (target2,ptid2), a new regcache is added to
+     current_regcache, since this time we're using a differen
+     target.  */
+  test_get_thread_arch_aspace_regcache (&test_target2, ptid2,
+					target_gdbarch (),
+					NULL);
+  SELF_CHECK (regcache_access::current_regcache_size () == 4);
+
+  /* Mark that (target1,ptid2) changed.  The regcache of (target1,
+     ptid2) should be removed from current_regcache.  */
+  registers_changed_ptid (&test_target1, ptid2);
+  SELF_CHECK (regcache_access::current_regcache_size () == 3);
+
+  /* Get the regcache from (target2,ptid2) again, confirming the
+     registers_changed_ptid call above did not delete it.  */
+  test_get_thread_arch_aspace_regcache (&test_target2, ptid2,
+					target_gdbarch (),
+					NULL);
+  SELF_CHECK (regcache_access::current_regcache_size () == 3);
+
+  /* Confirm that marking all regcaches of all targets as changed
+     clears current_regcache.  */
+  registers_changed_ptid (nullptr, minus_one_ptid);
+  SELF_CHECK (regcache_access::current_regcache_size () == 0);
 }
 
 class target_ops_no_register : public test_target_ops
@@ -1509,8 +1584,9 @@ target_ops_no_register::xfer_partial (enum target_object object,
 class readwrite_regcache : public regcache
 {
 public:
-  readwrite_regcache (struct gdbarch *gdbarch)
-    : regcache (gdbarch, nullptr)
+  readwrite_regcache (process_stratum_target *target,
+		      struct gdbarch *gdbarch)
+    : regcache (target, gdbarch, nullptr)
   {}
 };
 
@@ -1535,6 +1611,7 @@ cooked_read_test (struct gdbarch *gdbarch)
   mock_inferior.gdbarch = gdbarch;
   mock_inferior.aspace = &mock_aspace;
   thread_info mock_thread (&mock_inferior, mock_ptid);
+  mock_inferior.thread_list = &mock_thread;
 
   /* Add the mock inferior to the inferior list so that look ups by
      target+ptid can find it.  */
@@ -1576,7 +1653,7 @@ cooked_read_test (struct gdbarch *gdbarch)
 	break;
     }
 
-  readwrite_regcache readwrite (gdbarch);
+  readwrite_regcache readwrite (&mock_target, gdbarch);
   gdb::def_vector<gdb_byte> buf (register_size (gdbarch, nonzero_regnum));
 
   readwrite.raw_read (nonzero_regnum, buf.data ());
@@ -1605,10 +1682,7 @@ cooked_read_test (struct gdbarch *gdbarch)
 
       SELF_CHECK (mock_target.fetch_registers_called == 0);
       SELF_CHECK (mock_target.store_registers_called == 0);
-
-      /* Some SPU pseudo registers are got via TARGET_OBJECT_SPU.  */
-      if (gdbarch_bfd_arch_info (gdbarch)->arch != bfd_arch_spu)
-	SELF_CHECK (mock_target.xfer_partial_called == 0);
+      SELF_CHECK (mock_target.xfer_partial_called == 0);
 
       mock_target.reset ();
     }
@@ -1712,7 +1786,7 @@ cooked_write_test (struct gdbarch *gdbarch)
     }
   } pop_targets;
 
-  readwrite_regcache readwrite (gdbarch);
+  readwrite_regcache readwrite (&mock_target, gdbarch);
 
   const int num_regs = gdbarch_num_cooked_regs (gdbarch);
 
@@ -1724,33 +1798,29 @@ cooked_write_test (struct gdbarch *gdbarch)
 
       auto bfd_arch = gdbarch_bfd_arch_info (gdbarch)->arch;
 
-      if ((bfd_arch == bfd_arch_sparc
-	   /* SPARC64_CWP_REGNUM, SPARC64_PSTATE_REGNUM,
-	      SPARC64_ASI_REGNUM and SPARC64_CCR_REGNUM are hard to test.  */
-	   && gdbarch_ptr_bit (gdbarch) == 64
-	   && (regnum >= gdbarch_num_regs (gdbarch)
-	       && regnum <= gdbarch_num_regs (gdbarch) + 4))
-	  || (bfd_arch == bfd_arch_spu
-	      /* SPU pseudo registers except SPU_SP_REGNUM are got by
-		 TARGET_OBJECT_SPU.  */
-	      && regnum >= gdbarch_num_regs (gdbarch) && regnum != 130))
+      if (bfd_arch == bfd_arch_sparc
+	  /* SPARC64_CWP_REGNUM, SPARC64_PSTATE_REGNUM,
+	     SPARC64_ASI_REGNUM and SPARC64_CCR_REGNUM are hard to test.  */
+	  && gdbarch_ptr_bit (gdbarch) == 64
+	  && (regnum >= gdbarch_num_regs (gdbarch)
+	      && regnum <= gdbarch_num_regs (gdbarch) + 4))
 	continue;
 
       std::vector<gdb_byte> expected (register_size (gdbarch, regnum), 0);
       std::vector<gdb_byte> buf (register_size (gdbarch, regnum), 0);
       const auto type = register_type (gdbarch, regnum);
 
-      if (TYPE_CODE (type) == TYPE_CODE_FLT
-	  || TYPE_CODE (type) == TYPE_CODE_DECFLOAT)
+      if (type->code () == TYPE_CODE_FLT
+	  || type->code () == TYPE_CODE_DECFLOAT)
 	{
 	  /* Generate valid float format.  */
 	  target_float_from_string (expected.data (), type, "1.25");
 	}
-      else if (TYPE_CODE (type) == TYPE_CODE_INT
-	       || TYPE_CODE (type) == TYPE_CODE_ARRAY
-	       || TYPE_CODE (type) == TYPE_CODE_PTR
-	       || TYPE_CODE (type) == TYPE_CODE_UNION
-	       || TYPE_CODE (type) == TYPE_CODE_STRUCT)
+      else if (type->code () == TYPE_CODE_INT
+	       || type->code () == TYPE_CODE_ARRAY
+	       || type->code () == TYPE_CODE_PTR
+	       || type->code () == TYPE_CODE_UNION
+	       || type->code () == TYPE_CODE_STRUCT)
 	{
 	  if (bfd_arch == bfd_arch_ia64
 	      || (regnum >= gdbarch_num_regs (gdbarch)
@@ -1780,7 +1850,7 @@ cooked_write_test (struct gdbarch *gdbarch)
 		expected[j] = j;
 	    }
 	}
-      else if (TYPE_CODE (type) == TYPE_CODE_FLAGS)
+      else if (type->code () == TYPE_CODE_FLAGS)
 	{
 	  /* No idea how to test flags.  */
 	  continue;
@@ -1802,8 +1872,9 @@ cooked_write_test (struct gdbarch *gdbarch)
 } // namespace selftests
 #endif /* GDB_SELF_TEST */
 
+void _initialize_regcache ();
 void
-_initialize_regcache (void)
+_initialize_regcache ()
 {
   regcache_descr_handle
     = gdbarch_data_register_post_init (init_regcache_descr);
@@ -1813,7 +1884,7 @@ _initialize_regcache (void)
     (regcache::regcache_thread_ptid_changed);
 
   add_com ("flushregs", class_maintenance, reg_flush_command,
-	   _("Force gdb to flush its register cache (maintainer command)"));
+	   _("Force gdb to flush its register cache (maintainer command)."));
 
 #if GDB_SELF_TEST
   selftests::register_test ("current_regcache", selftests::current_regcache_test);

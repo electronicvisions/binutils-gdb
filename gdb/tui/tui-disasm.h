@@ -1,6 +1,6 @@
 /* Disassembly display.
 
-   Copyright (C) 1998-2019 Free Software Foundation, Inc.
+   Copyright (C) 1998-2020 Free Software Foundation, Inc.
    
    Contributed by Hewlett-Packard Company.
 
@@ -30,10 +30,7 @@
 
 struct tui_disasm_window : public tui_source_window_base
 {
-  tui_disasm_window ()
-    : tui_source_window_base (DISASSEM_WIN)
-  {
-  }
+  tui_disasm_window () = default;
 
   DISABLE_COPY_AND_ASSIGN (tui_disasm_window);
 
@@ -44,15 +41,29 @@ struct tui_disasm_window : public tui_source_window_base
 
   bool location_matches_p (struct bp_location *loc, int line_no) override;
 
+  void maybe_update (struct frame_info *fi, symtab_and_line sal) override;
+
+  void erase_source_content () override
+  {
+    do_erase_source_content (_("[ No Assembly Available ]"));
+  }
+
+  void display_start_addr (struct gdbarch **gdbarch_p,
+			   CORE_ADDR *addr_p) override;
+
 protected:
 
   void do_scroll_vertical (int num_to_scroll) override;
+
+  bool set_contents (struct gdbarch *gdbarch,
+		     const struct symtab_and_line &sal) override;
+
+private:
+  /* Answer whether a particular line number or address is displayed
+     in the current source window.  */
+  bool addr_is_displayed (CORE_ADDR addr) const;
 };
 
-extern enum tui_status tui_set_disassem_content (tui_source_window_base *,
-						 struct gdbarch *, CORE_ADDR);
-extern void tui_show_disassem (struct gdbarch *, CORE_ADDR);
-extern void tui_show_disassem_and_update_source (struct gdbarch *, CORE_ADDR);
 extern void tui_get_begin_asm_address (struct gdbarch **, CORE_ADDR *);
 
 #endif /* TUI_TUI_DISASM_H */

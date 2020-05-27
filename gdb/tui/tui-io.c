@@ -1,6 +1,6 @@
 /* TUI support I/O functions.
 
-   Copyright (C) 1998-2019 Free Software Foundation, Inc.
+   Copyright (C) 1998-2020 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -21,7 +21,7 @@
 
 #include "defs.h"
 #include "target.h"
-#include "event-loop.h"
+#include "gdbsupport/event-loop.h"
 #include "event-top.h"
 #include "command.h"
 #include "top.h"
@@ -90,7 +90,7 @@ key_is_start_sequence (int ch)
    be garbled.  This is implemented with a pipe that TUI reads and
    readline writes to.  A gdb input handler is created so that reading
    the pipe is handled automatically.  This will probably not work on
-   non-Unix platforms.  The best fix is to make readline clean enougth
+   non-Unix platforms.  The best fix is to make readline clean enough
    so that is never write on stdout.
 
    Note SCz/2002-09-01: we now use more readline hooks and it seems
@@ -131,10 +131,6 @@ static FILE *tui_old_rl_outstream;
 static int tui_readline_pipe[2];
 #endif
 
-/* The last gdb prompt that was registered in readline.
-   This may be the main gdb prompt or a secondary prompt.  */
-static char *tui_rl_saved_prompt;
-
 /* Print a character in the curses command window.  The output is
    buffered.  It is up to the caller to refresh the screen if
    necessary.  */
@@ -142,35 +138,21 @@ static char *tui_rl_saved_prompt;
 static void
 do_tui_putc (WINDOW *w, char c)
 {
-  static int tui_skip_line = -1;
+  /* Expand TABs, since ncurses on MS-Windows doesn't.  */
+  if (c == '\t')
+    {
+      int col;
 
-  /* Catch annotation and discard them.  We need two \032 and discard
-     until a \n is seen.  */
-  if (c == '\032')
-    {
-      tui_skip_line++;
-    }
-  else if (tui_skip_line != 1)
-    {
-      tui_skip_line = -1;
-      /* Expand TABs, since ncurses on MS-Windows doesn't.  */
-      if (c == '\t')
+      col = getcurx (w);
+      do
 	{
-	  int col;
-
-	  col = getcurx (w);
-	  do
-	    {
-	      waddch (w, ' ');
-	      col++;
-	    }
-	  while ((col % 8) != 0);
+	  waddch (w, ' ');
+	  col++;
 	}
-      else
-	waddch (w, c);
+      while ((col % 8) != 0);
     }
-  else if (c == '\n')
-    tui_skip_line = -1;
+  else
+    waddch (w, c);
 }
 
 /* Update the cached value of the command window's start line based on
@@ -179,8 +161,7 @@ do_tui_putc (WINDOW *w, char c)
 static void
 update_cmdwin_start_line ()
 {
-  TUI_CMD_WIN->start_line
-    = getcury (TUI_CMD_WIN->handle);
+  TUI_CMD_WIN->start_line = getcury (TUI_CMD_WIN->handle.get ());
 }
 
 /* Print a character in the curses command window.  The output is
@@ -190,9 +171,7 @@ update_cmdwin_start_line ()
 static void
 tui_putc (char c)
 {
-  WINDOW *w = TUI_CMD_WIN->handle;
-
-  do_tui_putc (w, c);
+  do_tui_putc (TUI_CMD_WIN->handle.get (), c);
   update_cmdwin_start_line ();
 }
 
@@ -309,8 +288,8 @@ get_color_pair (int fg, int bg)
 
 /* Apply STYLE to W.  */
 
-static void
-apply_style (WINDOW *w, ui_file_style style)
+void
+tui_apply_style (WINDOW *w, ui_file_style style)
 {
   /* Reset.  */
   wattron (w, A_NORMAL);
@@ -416,7 +395,7 @@ apply_ansi_escape (WINDOW *w, const char *buf)
       style.set_reverse (true);
     }
 
-  apply_style (w, style);
+  tui_apply_style (w, style);
   return n_read;
 }
 
@@ -441,7 +420,7 @@ tui_set_reverse_mode (WINDOW *w, bool reverse)
       style.set_fg (reverse_save_fg);
     }
 
-  apply_style (w, style);
+  tui_apply_style (w, style);
 }
 
 /* Print LENGTH characters from the buffer pointed to by BUF to the
@@ -495,7 +474,8 @@ tui_puts_internal (WINDOW *w, const char *string, int *height)
 	    }
 	}
     }
-  update_cmdwin_start_line ();
+  if (TUI_CMD_WIN != nullptr && w == TUI_CMD_WIN->handle.get ())
+    update_cmdwin_start_line ();
   if (saw_nl)
     wrefresh (w);
 }
@@ -508,7 +488,7 @@ void
 tui_puts (const char *string, WINDOW *w)
 {
   if (w == nullptr)
-    w = TUI_CMD_WIN->handle;
+    w = TUI_CMD_WIN->handle.get ();
   tui_puts_internal (w, string, nullptr);
 }
 
@@ -540,17 +520,17 @@ tui_redisplay_readline (void)
   if (tui_current_key_mode == TUI_SINGLE_KEY_MODE)
     prompt = "";
   else
-    prompt = tui_rl_saved_prompt;
+    prompt = rl_display_prompt;
   
   c_pos = -1;
   c_line = -1;
-  w = TUI_CMD_WIN->handle;
+  w = TUI_CMD_WIN->handle.get ();
   start_line = TUI_CMD_WIN->start_line;
   wmove (w, start_line, 0);
   prev_col = 0;
   height = 1;
   if (prompt != nullptr)
-    tui_puts_internal (TUI_CMD_WIN->handle, prompt, &height);
+    tui_puts_internal (w, prompt, &height);
 
   prev_col = getcurx (w);
   for (in = 0; in <= rl_end; in++)
@@ -608,11 +588,6 @@ tui_redisplay_readline (void)
 static void
 tui_prep_terminal (int notused1)
 {
-  /* Save the prompt registered in readline to correctly display it.
-     (we can't use gdb_prompt() due to secondary prompts and can't use
-     rl_prompt because it points to an alloca buffer).  */
-  xfree (tui_rl_saved_prompt);
-  tui_rl_saved_prompt = rl_prompt != NULL ? xstrdup (rl_prompt) : NULL;
 }
 
 /* Readline callback to restore the terminal.  It is called once each
@@ -669,7 +644,7 @@ tui_mld_puts (const struct match_list_displayer *displayer, const char *s)
 static void
 tui_mld_flush (const struct match_list_displayer *displayer)
 {
-  wrefresh (TUI_CMD_WIN->handle);
+  wrefresh (TUI_CMD_WIN->handle.get ());
 }
 
 /* TUI version of displayer.erase_entire_line.  */
@@ -677,7 +652,7 @@ tui_mld_flush (const struct match_list_displayer *displayer)
 static void
 tui_mld_erase_entire_line (const struct match_list_displayer *displayer)
 {
-  WINDOW *w = TUI_CMD_WIN->handle;
+  WINDOW *w = TUI_CMD_WIN->handle.get ();
   int cur_y = getcury (w);
 
   wmove (w, cur_y, 0);
@@ -715,7 +690,7 @@ gdb_wgetch (WINDOW *win)
 static int
 tui_mld_getc (FILE *fp)
 {
-  WINDOW *w = TUI_CMD_WIN->handle;
+  WINDOW *w = TUI_CMD_WIN->handle.get ();
   int c = gdb_wgetch (w);
 
   return c;
@@ -850,8 +825,6 @@ tui_cont_sig (int sig)
 
       /* Force a refresh of the screen.  */
       tui_refresh_all_win ();
-
-      wrefresh (TUI_CMD_WIN->handle);
     }
   signal (sig, tui_cont_sig);
 }
@@ -963,15 +936,17 @@ tui_dispatch_ctrl_char (unsigned int ch)
   return 0;
 }
 
-/* Get a character from the command window.  This is called from the
-   readline package.  */
+/* Main worker for tui_getc.  Get a character from the command window.
+   This is called from the readline package, but wrapped in a
+   try/catch by tui_getc.  */
+
 static int
-tui_getc (FILE *fp)
+tui_getc_1 (FILE *fp)
 {
   int ch;
   WINDOW *w;
 
-  w = TUI_CMD_WIN->handle;
+  w = TUI_CMD_WIN->handle.get ();
 
 #ifdef TUI_USE_PIPE_FOR_READLINE
   /* Flush readline output.  */
@@ -1049,19 +1024,40 @@ tui_getc (FILE *fp)
   return ch;
 }
 
-/* Utility function to expand TABs in a STRING into spaces.  STRING
-   will be displayed starting at column COL, and is assumed to include
-   no newlines.  The returned expanded string is malloc'ed.  */
+/* Get a character from the command window.  This is called from the
+   readline package.  */
 
-char *
-tui_expand_tabs (const char *string, int col)
+static int
+tui_getc (FILE *fp)
+{
+  try
+    {
+      return tui_getc_1 (fp);
+    }
+  catch (const gdb_exception &ex)
+    {
+      /* Just in case, don't ever let an exception escape to readline.
+	 This shouldn't ever happen, but if it does, print the
+	 exception instead of just crashing GDB.  */
+      exception_print (gdb_stderr, ex);
+
+      /* If we threw an exception, it's because we recognized the
+	 character.  */
+      return 0;
+    }
+}
+
+/* See tui-io.h.  */
+
+gdb::unique_xmalloc_ptr<char>
+tui_expand_tabs (const char *string)
 {
   int n_adjust, ncol;
   const char *s;
   char *ret, *q;
 
   /* 1. How many additional characters do we need?  */
-  for (ncol = col, n_adjust = 0, s = string; s; )
+  for (ncol = 0, n_adjust = 0, s = string; s; )
     {
       s = strpbrk (s, "\t");
       if (s)
@@ -1078,7 +1074,7 @@ tui_expand_tabs (const char *string, int col)
   ret = q = (char *) xmalloc (strlen (string) + n_adjust + 1);
 
   /* 2. Copy the original string while replacing TABs with spaces.  */
-  for (ncol = col, s = string; s; )
+  for (ncol = 0, s = string; s; )
     {
       const char *s1 = strpbrk (s, "\t");
       if (s1)
@@ -1100,5 +1096,5 @@ tui_expand_tabs (const char *string, int col)
       s = s1;
     }
 
-  return ret;
+  return gdb::unique_xmalloc_ptr<char> (ret);
 }

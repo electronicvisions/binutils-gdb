@@ -1,6 +1,6 @@
 /* Self tests for array_view for GDB, the GNU debugger.
 
-   Copyright (C) 2017-2019 Free Software Foundation, Inc.
+   Copyright (C) 2017-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -259,7 +259,7 @@ require_not_constructible ()
 
 /* Check the array_view<T>(PTR, SIZE) ctor, when T is a pointer.  */
 
-void
+static void
 check_ptr_size_ctor2 ()
 {
   struct A {};
@@ -523,6 +523,7 @@ run_tests ()
 } /* namespace array_view_tests */
 } /* namespace selftests */
 
+void _initialize_array_view_selftests ();
 void
 _initialize_array_view_selftests ()
 {

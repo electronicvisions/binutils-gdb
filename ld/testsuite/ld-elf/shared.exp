@@ -1,5 +1,5 @@
 # Expect script for various ELF tests.
-#   Copyright (C) 2006-2019 Free Software Foundation, Inc.
+#   Copyright (C) 2006-2020 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -46,7 +46,7 @@ if [istarget "tic6x-*-*"] {
     append AFLAGS_PIC " -mpic -mpid=near"
 }
 if [istarget "sparc*-*-*"] {
-    append AFLAGS_PIC " -K PIC"
+    append AFLAGS_PIC " -K PIC -Av9"
 }
 
 # GAS options to disable program property note.
@@ -337,6 +337,38 @@ if { [check_gc_sections_available] } {
 	    "pr22150" \
 	] \
     ]
+
+    switch -glob $target_triplet {
+	# exclude targets that don't support copy relocs
+	bfin-*-* { }
+	frv-*-* { }
+	lm32-*-* { }
+	mips*-*-* { }
+	tic6x-*-* { }
+	xtensa-*-* { }
+	default {
+	    run_ld_link_tests [list \
+		[list \
+		     "Build pr25458.so" \
+		     "$LFLAGS -shared --version-script=pr25458.map" \
+		     "" \
+		     "$AFLAGS_PIC" \
+		     {pr25458b.s} \
+		     {} \
+		     "pr25458.so" \
+		] \
+		[list \
+		     "Build pr25458" \
+		     "$LFLAGS -e _start --gc-sections" \
+		     "tmpdir/pr25458.so" \
+		     "$AFLAGS_PIC" \
+		     {pr25458a.s} \
+		     {{readelf {--dyn-sym --wide} pr25458.rd}} \
+		     "pr25458" \
+		] \
+	    ]
+	}
+    }
 }
 
 set ASFLAGS $old_ASFLAGS
@@ -566,6 +598,9 @@ set build_tests {
   {"Build libdl2c.so with --dynamic-list-data and dl2xxx.list"
    "-shared -Wl,--dynamic-list-data,--dynamic-list=dl2xxx.list" "-fPIC"
    {dl2.c dl2xxx.c} {} "libdl2c.so"}
+  {"Build libdl2d.so with --dynamic-list-data -Bsymbolic"
+   "-shared -Wl,-Bsymbolic,--dynamic-list-data" "-fPIC"
+   {dl2.c dl2xxx.c} {} "libdl2d.so"}
   {"Build libdl4a.so with --dynamic-list=dl4.list"
    "-shared -Wl,--dynamic-list=dl4.list" "-fPIC"
    {dl4.c dl4xxx.c} {} "libdl4a.so"}
@@ -603,7 +638,7 @@ set build_tests {
    "-shared" "-fPIC"
    {data2.c} {} "libdata2.so"}
   {"Build libcomm1.o"
-   "-r -nostdlib" ""
+   "-r -nostdlib" "-fcommon"
    {comm1.c} {} "libcomm1.o"}
   {"Build libfunc1.so"
    "-shared" "-fPIC"
@@ -634,16 +669,16 @@ set build_tests {
    "-r -nostdlib" ""
    {pr11138-2.c} {} "libpr11138-2.o"}
   {"Build pr13250-1.so"
-   "-shared" "-fPIC"
+   "-shared" "-fPIC -fcommon"
    {pr13250-1.c} {} "libpr13250-1.so"}
   {"Build pr13250-2.so with libpr13250-1.so"
-   "-shared -Wl,--no-as-needed tmpdir/libpr13250-1.so" "-fPIC"
+   "-shared -Wl,--no-as-needed tmpdir/libpr13250-1.so" "-fPIC -fcommon"
    {pr13250-2.c} {} "libpr13250-2.so"}
   {"Build libpr13250-3.o"
-   "-r -nostdlib" ""
+   "-r -nostdlib" "-fcommon"
    {pr13250-3.c} {} "libpr13250-3.o"}
   {"Build libpr14323-2.so"
-   "-shared" "-fPIC"
+   "-shared" "-fPIC -fcommon"
    {pr14323-2.c} {} "libpr14323-2.so"}
   {"Build pr14862-1.o"
    "-r -nostdlib" ""
@@ -781,8 +816,8 @@ run_cc_link_tests $build_tests
 
 run_ld_link_tests [list \
     [list \
-	"Build pr22269-1" \
-	"-pie -e _start --no-dynamic-linker -z text" \
+	"pr22269-1 (static pie undefined weak)" \
+	"-pie -e _start --no-dynamic-linker -z text -z nocombreloc " \
 	"" \
 	"$AFLAGS_PIC" \
 	{ pr22269-1.c } \
@@ -842,6 +877,9 @@ set run_tests [list \
     [list "Run with libdl2c.so" \
      "-Wl,--no-as-needed tmpdir/libdl2c.so" "" \
      {dl2main.c} "dl2c" "dl2b.out" ] \
+    [list "Run with libdl2d.so" \
+     "-Wl,--no-as-needed tmpdir/libdl2d.so" "" \
+     {dl2main.c} "dl2d" "dl2a.out" ] \
     [list "Run with libdl4a.so" \
      "-Wl,--no-as-needed tmpdir/libdl4a.so" "" \
      {dl4main.c} "dl4a" "dl4a.out" ] \
@@ -856,10 +894,10 @@ set run_tests [list \
      {dl4main.c} "dl4d" "dl4b.out" ] \
     [list "Run with libdl4e.so" \
      "-Wl,--no-as-needed tmpdir/libdl4e.so" "" \
-     {dl4main.c} "dl4e" "dl4a.out" ] \
+     {dl4main.c} "dl4e" "dl4e.out" ] \
     [list "Run with libdl4f.so" \
      "-Wl,--no-as-needed tmpdir/libdl4f.so" "" \
-     {dl4main.c} "dl4f" "dl4a.out" ] \
+     {dl4main.c} "dl4f" "dl4e.out" ] \
     [list "Run with libdata1.so" \
      "-Wl,--no-as-needed tmpdir/libdata1.so" "" \
      {dynbss1.c} "dynbss1" "pass.out" ] \
@@ -879,7 +917,7 @@ set run_tests [list \
      "-Wl,--no-as-needed,--version-script=pr11138-2.map tmpdir/libpr11138-1.so tmpdir/pr11138-2.o" "" \
      {dummy.c} "pr11138b" "pr11138.out" ] \
     [list "Run with pr13250-3.c, libpr13250-1.so and libpr13250-2.so" \
-     "-Wl,--as-needed tmpdir/pr13250-3.o tmpdir/libpr13250-1.so tmpdir/libpr13250-2.so" "" \
+     "-Wl,--as-needed tmpdir/pr13250-3.o tmpdir/libpr13250-1.so tmpdir/libpr13250-2.so" "-fcommon" \
      {dummy.c} "pr13250" "pass.out" ] \
     [list "Run with pr14323-1.c pr14323-2.so" \
      "-Wl,--no-as-needed tmpdir/libpr14323-2.so" "" \
@@ -956,7 +994,7 @@ set dlopen_run_tests [list \
      {dl6cmain.c} "dl6c1" "dl6b.out" ] \
     [list "Run dl6d1 with --dynamic-list-data and dlopen on libdl6d.so" \
      "-Wl,--no-as-needed,--dynamic-list-data $extralibs" "" \
-     {dl6dmain.c} "dl6d1" "dl6b.out" ] \
+     {dl6dmain.c} "dl6d1" "dl6a.out" ] \
     [list "Run pr21964-2" \
      "-Wl,--no-as-needed,-rpath,tmpdir tmpdir/pr21964-2a.so $extralibs" "" \
      {pr21964-2c.c} "pr21964-2" "pass.out" ] \
@@ -1061,7 +1099,7 @@ if { [istarget *-*-linux*]
 	] \
 	[list \
 	    "Build pr19579a.o" \
-	    "" "-fPIE" \
+	    "" "-fPIE -fcommon" \
 	    {pr19579a.c} \
 	    {} \
 	    "libpr19579a.a" \
@@ -1069,7 +1107,7 @@ if { [istarget *-*-linux*]
 	[list \
 	    "Build libpr19579.so" \
 	    "-shared" \
-	    "-fPIC" \
+	    "-fPIC -fcommon" \
 	    {pr19579b.c} \
 	    {} \
 	    "libpr19579.so" \
@@ -1077,7 +1115,7 @@ if { [istarget *-*-linux*]
 	[list \
 	    "Build libpr19579now.so" \
 	    "-shared -Wl,-z,now" \
-	    "-fPIC" \
+	    "-fPIC -fcommon" \
 	    {pr19579b.c} \
 	    {} \
 	    "libpr19579.so" \

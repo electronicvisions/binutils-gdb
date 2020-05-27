@@ -1,5 +1,5 @@
 /* Header file for GDB CLI command implementation library.
-   Copyright (C) 2000-2019 Free Software Foundation, Inc.
+   Copyright (C) 2000-2020 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -101,6 +101,10 @@ extern struct cmd_list_element *setchecklist;
 
 extern struct cmd_list_element *showchecklist;
 
+/* Limit the call depth of user-defined commands */
+
+extern unsigned int max_user_call_depth;
+
 /* Exported to gdb/top.c */
 
 void init_cmd_lists (void);
@@ -139,7 +143,7 @@ extern gdb::optional<open_script>
 /* Command tracing state.  */
 
 extern int source_verbose;
-extern int trace_commands;
+extern bool trace_commands;
 
 /* Common code for the "with" and "maintenance with" commands.
    SET_CMD_PREFIX is the spelling of the corresponding "set" command

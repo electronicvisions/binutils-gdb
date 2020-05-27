@@ -1,5 +1,5 @@
 /* tc-xtensa.c -- Assemble Xtensa instructions.
-   Copyright (C) 2003-2019 Free Software Foundation, Inc.
+   Copyright (C) 2003-2020 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -33,6 +33,10 @@
 /* Provide default values for new configuration settings.  */
 #ifndef XSHAL_ABI
 #define XSHAL_ABI 0
+#endif
+
+#ifndef XTENSA_MARCH_EARLIEST
+#define XTENSA_MARCH_EARLIEST 0
 #endif
 
 #ifndef uint32
@@ -73,6 +77,8 @@ const char FLT_CHARS[] = "rRsSfFdDxXpP";
 
 bfd_boolean density_supported;
 bfd_boolean absolute_literals_supported;
+
+static unsigned microarch_earliest;
 
 static vliw_insn cur_vinsn;
 
@@ -2047,13 +2053,13 @@ tokenize_arguments (char **args, char *str)
 	}
     }
 
-fini:
+ fini:
   if (saw_comma || saw_colon)
     goto err;
   input_line_pointer = old_input_line_pointer;
   return num_args;
 
-err:
+ err:
   if (saw_comma)
     as_bad (_("extra comma"));
   else if (saw_colon)
@@ -2498,6 +2504,18 @@ xg_translate_idioms (char **popname, int *pnum_args, char **arg_strings)
 	  xg_replace_opname (popname, (has_underbar ? "_or" : "or"));
 	  arg_strings[2] = xstrdup (arg_strings[1]);
 	  *pnum_args = 3;
+	}
+      return 0;
+    }
+
+  /* Without an operand, this is given a default immediate operand of 0.  */
+  if ((strcmp (opname, "simcall") == 0 && microarch_earliest >= 280000))
+    {
+      if (*pnum_args == 0)
+	{
+	  arg_strings[0] = (char *) xmalloc (2);
+	  strcpy (arg_strings[0], "0");
+	  *pnum_args = 1;
 	}
       return 0;
     }
@@ -4115,7 +4133,7 @@ get_is_linkonce_section (bfd *abfd ATTRIBUTE_UNUSED, segT sec)
 {
   flagword flags, link_once_flags;
 
-  flags = bfd_get_section_flags (abfd, sec);
+  flags = bfd_section_flags (sec);
   link_once_flags = (flags & SEC_LINK_ONCE);
 
   /* Flags might not be set yet.  */
@@ -4980,7 +4998,7 @@ xtensa_mark_frags_for_org (void)
       segment_info_type *seginfo;
       fragS *fragP;
       flagword flags;
-      flags = bfd_get_section_flags (stdoutput, sec);
+      flags = bfd_section_flags (sec);
       if (flags & SEC_DEBUGGING)
 	continue;
       if (!(flags & SEC_ALLOC))
@@ -5025,7 +5043,7 @@ xtensa_find_unmarked_state_frags (void)
       segment_info_type *seginfo;
       fragS *fragP;
       flagword flags;
-      flags = bfd_get_section_flags (stdoutput, sec);
+      flags = bfd_section_flags (sec);
       if (flags & SEC_DEBUGGING)
 	continue;
       if (!(flags & SEC_ALLOC))
@@ -5073,7 +5091,7 @@ xtensa_find_unaligned_branch_targets (bfd *abfd ATTRIBUTE_UNUSED,
 				      asection *sec,
 				      void *unused ATTRIBUTE_UNUSED)
 {
-  flagword flags = bfd_get_section_flags (abfd, sec);
+  flagword flags = bfd_section_flags (sec);
   segment_info_type *seginfo = seg_info (sec);
   fragS *frag = seginfo->frchainP->frch_root;
 
@@ -5112,7 +5130,7 @@ xtensa_find_unaligned_loops (bfd *abfd ATTRIBUTE_UNUSED,
 			     asection *sec,
 			     void *unused ATTRIBUTE_UNUSED)
 {
-  flagword flags = bfd_get_section_flags (abfd, sec);
+  flagword flags = bfd_section_flags (sec);
   segment_info_type *seginfo = seg_info (sec);
   fragS *frag = seginfo->frchainP->frch_root;
   xtensa_isa isa = xtensa_default_isa;
@@ -5236,6 +5254,8 @@ xg_init_global_config (void)
 
   directive_state[directive_density] = XCHAL_HAVE_DENSITY;
   directive_state[directive_absolute_literals] = XSHAL_USE_ABSOLUTE_LITERALS;
+
+  microarch_earliest = XTENSA_MARCH_EARLIEST;
 }
 
 void
@@ -5974,18 +5994,24 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg)
     case BFD_RELOC_8:
       if (fixP->fx_subsy)
 	{
+	  bfd_boolean neg = S_GET_VALUE (fixP->fx_addsy) + fixP->fx_offset
+	    < S_GET_VALUE (fixP->fx_subsy);
+
 	  switch (fixP->fx_r_type)
 	    {
 	    case BFD_RELOC_8:
-	      fixP->fx_r_type = BFD_RELOC_XTENSA_DIFF8;
+	      fixP->fx_r_type = neg
+		? BFD_RELOC_XTENSA_NDIFF8 : BFD_RELOC_XTENSA_PDIFF8;
 	      fixP->fx_signed = 0;
 	      break;
 	    case BFD_RELOC_16:
-	      fixP->fx_r_type = BFD_RELOC_XTENSA_DIFF16;
+	      fixP->fx_r_type = neg
+		? BFD_RELOC_XTENSA_NDIFF16 : BFD_RELOC_XTENSA_PDIFF16;
 	      fixP->fx_signed = 0;
 	      break;
 	    case BFD_RELOC_32:
-	      fixP->fx_r_type = BFD_RELOC_XTENSA_DIFF32;
+	      fixP->fx_r_type = neg
+		? BFD_RELOC_XTENSA_NDIFF32 : BFD_RELOC_XTENSA_PDIFF32;
 	      fixP->fx_signed = 0;
 	      break;
 	    default:
@@ -7584,14 +7610,17 @@ static int xg_order_trampoline_chain_entry (const void *a, const void *b)
   const struct trampoline_chain_entry *pa = a;
   const struct trampoline_chain_entry *pb = b;
 
-  if (pa->sym == pb->sym ||
-      S_GET_VALUE (pa->sym) == S_GET_VALUE (pb->sym))
-    if (pa->offset == pb->offset)
-      return 0;
-    else
-      return pa->offset < pb->offset ? -1 : 1;
-  else
-    return S_GET_VALUE (pa->sym) < S_GET_VALUE (pb->sym) ? -1 : 1;
+  if (pa->sym != pb->sym)
+    {
+      valueT aval = S_GET_VALUE (pa->sym);
+      valueT bval = S_GET_VALUE (pb->sym);
+
+      if (aval != bval)
+	return aval < bval ? -1 : 1;
+    }
+  if (pa->offset != pb->offset)
+    return pa->offset < pb->offset ? -1 : 1;
+  return 0;
 }
 
 static void xg_sort_trampoline_chain (struct trampoline_chain *tc)
@@ -7674,23 +7703,24 @@ static int xg_order_trampoline_chain (const void *a, const void *b)
   const struct trampoline_chain_entry *pb = &_pb->target;
   symbolS *s1 = pa->sym;
   symbolS *s2 = pb->sym;
-  symbolS *tmp;
 
-  tmp = symbol_symbolS (s1);
-  if (tmp)
-    s1 = tmp;
+  if (s1 != s2)
+    {
+      symbolS *tmp = symbol_symbolS (s1);
+      if (tmp)
+	s1 = tmp;
 
-  tmp = symbol_symbolS (s2);
-  if (tmp)
-    s2 = tmp;
+      tmp = symbol_symbolS (s2);
+      if (tmp)
+	s2 = tmp;
 
-  if (s1 == s2)
-    if (pa->offset == pb->offset)
-      return 0;
-    else
-      return pa->offset < pb->offset ? -1 : 1;
-  else
-    return s1 < s2 ? -1 : 1;
+      if (s1 != s2)
+	return s1 < s2 ? -1 : 1;
+    }
+
+  if (pa->offset != pb->offset)
+    return pa->offset < pb->offset ? -1 : 1;
+  return 0;
 }
 
 static struct trampoline_chain *
@@ -8941,7 +8971,7 @@ xtensa_add_config_info (void)
   int sz;
 
   info_sec = subseg_new (".xtensa.info", 0);
-  bfd_set_section_flags (stdoutput, info_sec, SEC_HAS_CONTENTS | SEC_READONLY);
+  bfd_set_section_flags (info_sec, SEC_HAS_CONTENTS | SEC_READONLY);
 
   data = XNEWVEC (char, 100);
   sprintf (data, "USE_ABSOLUTE_LITERALS=%d\nABI=%d\n",
@@ -11682,8 +11712,8 @@ cache_literal_section (bfd_boolean use_abs_literals)
 
       elf_group_name (seg) = group_name;
 
-      bfd_set_section_flags (stdoutput, seg, flags);
-      bfd_set_section_alignment (stdoutput, seg, 2);
+      bfd_set_section_flags (seg, flags);
+      bfd_set_section_alignment (seg, 2);
     }
 
   *pcached = seg;
@@ -11814,7 +11844,7 @@ xtensa_create_property_segments (frag_predicate property_function,
 	    num_recs++;
 
 	  rec_size = num_recs * 8;
-	  bfd_set_section_size (stdoutput, sec, rec_size);
+	  bfd_set_section_size (sec, rec_size);
 
 	  if (num_recs)
 	    {
@@ -11911,7 +11941,7 @@ xtensa_create_xproperty_segments (frag_flags_fn flag_fn,
 	    num_recs++;
 
 	  rec_size = num_recs * (8 + 4);
-	  bfd_set_section_size (stdoutput, sec, rec_size);
+	  bfd_set_section_size (sec, rec_size);
 	  /* elf_section_data (sec)->this_hdr.sh_entsize = 12; */
 
 	  if (num_recs)
@@ -11955,7 +11985,7 @@ xtensa_create_xproperty_segments (frag_flags_fn flag_fn,
 static bfd_boolean
 exclude_section_from_property_tables (segT sec)
 {
-  flagword flags = bfd_get_section_flags (stdoutput, sec);
+  flagword flags = bfd_section_flags (sec);
 
   /* Sections that don't contribute to the memory footprint are excluded.  */
   if ((flags & SEC_DEBUGGING)

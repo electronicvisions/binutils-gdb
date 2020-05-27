@@ -1,6 +1,6 @@
 /* Header file for command creation.
 
-   Copyright (C) 1986-2019 Free Software Foundation, Inc.
+   Copyright (C) 1986-2020 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -29,21 +29,46 @@ struct completion_tracker;
 /* Command classes are top-level categories into which commands are
    broken down for "help" purposes.
 
-   Notes on classes: class_alias is for alias commands which are not
-   abbreviations of the original command.  class-pseudo is for
-   commands which are not really commands nor help topics ("stop").  */
+   The class_alias is used for the user-defined aliases, defined
+   using the "alias" command.
+
+   Aliases pre-defined by GDB (e.g. the alias "bt" of the "backtrace" command)
+   are not using the class_alias.
+   Different pre-defined aliases of the same command do not necessarily
+   have the same classes.  For example, class_stack is used for the
+   "backtrace" and its "bt" alias", while "info stack" (also an alias
+   of "backtrace" uses class_info.  */
 
 enum command_class
 {
-  /* Special args to help_list */
-  class_deprecated = -3, all_classes = -2, all_commands = -1,
+  /* Classes of commands followed by a comment giving the name
+     to use in "help <classname>".
+     Note that help accepts unambiguous abbreviated class names.  */
+
+  /* Special classes to help_list */
+  class_deprecated = -3,
+  all_classes = -2,  /* help without <classname> */
+  all_commands = -1, /* all */
+
   /* Classes of commands */
-  no_class = -1, class_run = 0, class_vars, class_stack, class_files,
-  class_support, class_info, class_breakpoint, class_trace,
-  class_alias, class_bookmark, class_obscure, class_maintenance,
-  class_pseudo, class_tui, class_user, class_xdb,
-  no_set_class	/* Used for "show" commands that have no corresponding
-		   "set" command.  */
+  no_class = -1,
+  class_run = 0,     /* running */
+  class_vars,        /* data */
+  class_stack,       /* stack */
+  class_files,       /* files */
+  class_support,     /* support */
+  class_info,        /* status */
+  class_breakpoint,  /* breakpoints */
+  class_trace,       /* tracepoints */
+  class_alias,       /* aliases */
+  class_bookmark,
+  class_obscure,     /* obscure */
+  class_maintenance, /* internals */
+  class_tui,         /* text-user-interface */
+  class_user,        /* user-defined */
+
+  /* Used for "show" commands that have no corresponding "set" command.  */
+  no_set_class
 };
 
 /* FIXME: cagney/2002-03-17: Once cmd_type() has been removed, ``enum
@@ -62,8 +87,8 @@ cmd_types;
 /* Types of "set" or "show" command.  */
 typedef enum var_types
   {
-    /* "on" or "off".  *VAR is an integer which is nonzero for on,
-       zero for off.  */
+    /* "on" or "off".  *VAR is a bool which is true for on,
+       false for off.  */
     var_boolean,
 
     /* "on" / "true" / "enable" or "off" / "false" / "disable" or
@@ -133,7 +158,15 @@ extern struct cli_suppress_notification cli_suppress_notification;
 
 /* API to the manipulation of command lists.  */
 
+/* Return TRUE if NAME is a valid user-defined command name.
+   This is a stricter subset of all gdb commands,
+   see find_command_name_length.  */
+
 extern bool valid_user_defined_cmd_name_p (const char *name);
+
+/* Return TRUE if C is a valid command character.  */
+
+extern bool valid_cmd_char_p (int c);
 
 /* Const-correct variant of the above.  */
 
@@ -170,6 +203,20 @@ extern struct cmd_list_element *add_prefix_cmd (const char *, enum command_class
 						struct cmd_list_element **,
 						const char *, int,
 						struct cmd_list_element **);
+
+/* Like add_prefix_cmd, but sets the callback to a function that
+   simply calls help_list.  */
+
+extern struct cmd_list_element *add_basic_prefix_cmd
+  (const char *, enum command_class, const char *, struct cmd_list_element **,
+   const char *, int, struct cmd_list_element **);
+
+/* Like add_prefix_cmd, but useful for "show" prefixes.  This sets the
+   callback to a function that simply calls cmd_show_list.  */
+
+extern struct cmd_list_element *add_show_prefix_cmd
+  (const char *, enum command_class, const char *, struct cmd_list_element **,
+   const char *, int, struct cmd_list_element **);
 
 extern struct cmd_list_element *add_prefix_cmd_suppress_notification
 			(const char *name, enum command_class theclass,
@@ -331,7 +378,7 @@ extern void add_setshow_auto_boolean_cmd (const char *name,
 extern cmd_list_element *
   add_setshow_boolean_cmd (const char *name,
 			   enum command_class theclass,
-			   int *var,
+			   bool *var,
 			   const char *set_doc, const char *show_doc,
 			   const char *help_doc,
 			   cmd_const_sfunc_ftype *set_func,
@@ -442,7 +489,7 @@ extern void
 
 /* Do a "show" command for each thing on a command list.  */
 
-extern void cmd_show_list (struct cmd_list_element *, int, const char *);
+extern void cmd_show_list (struct cmd_list_element *, int);
 
 /* Used everywhere whenever at least one parameter is required and
    none is specified.  */

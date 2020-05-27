@@ -1,6 +1,6 @@
 /* Xilinx MicroBlaze-specific support for 32-bit ELF
 
-   Copyright (C) 2009-2019 Free Software Foundation, Inc.
+   Copyright (C) 2009-2020 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -803,7 +803,7 @@ static struct bfd_link_hash_table *
 microblaze_elf_link_hash_table_create (bfd *abfd)
 {
   struct elf32_mb_link_hash_table *ret;
-  bfd_size_type amt = sizeof (struct elf32_mb_link_hash_table);
+  size_t amt = sizeof (struct elf32_mb_link_hash_table);
 
   ret = (struct elf32_mb_link_hash_table *) bfd_zmalloc (amt);
   if (ret == NULL)
@@ -1071,7 +1071,7 @@ microblaze_elf_relocate_section (bfd *output_bfd,
 		/* Only relocate if the symbol is defined.  */
 		if (sec)
 		  {
-		    name = bfd_get_section_name (sec->owner, sec);
+		    name = bfd_section_name (sec);
 
 		    if (strcmp (name, ".sdata2") == 0
 			|| strcmp (name, ".sbss2") == 0)
@@ -1119,7 +1119,7 @@ microblaze_elf_relocate_section (bfd *output_bfd,
 		/* Only relocate if the symbol is defined.  */
 		if (sec)
 		  {
-		    name = bfd_get_section_name (sec->owner, sec);
+		    name = bfd_section_name (sec);
 
 		    if (strcmp (name, ".sdata") == 0
 			|| strcmp (name, ".sbss") == 0)
@@ -1608,7 +1608,7 @@ microblaze_elf_relocate_section (bfd *output_bfd,
 	      name = (bfd_elf_string_from_elf_section
 		      (input_bfd, symtab_hdr->sh_link, sym->st_name));
 	      if (name == NULL || *name == '\0')
-		name = bfd_section_name (input_bfd, sec);
+		name = bfd_section_name (sec);
 	    }
 
 	  if (errmsg != NULL)
@@ -2234,11 +2234,8 @@ microblaze_elf_relax_section (bfd *abfd,
       symtab_hdr->contents = (bfd_byte *) isymbuf;
     }
 
-  if (free_relocs != NULL)
-    {
-      free (free_relocs);
-      free_relocs = NULL;
-    }
+  free (free_relocs);
+  free_relocs = NULL;
 
   if (free_contents != NULL)
     {
@@ -2261,16 +2258,11 @@ microblaze_elf_relax_section (bfd *abfd,
   return TRUE;
 
  error_return:
-  if (free_relocs != NULL)
-    free (free_relocs);
-  if (free_contents != NULL)
-    free (free_contents);
-  if (sec->relax != NULL)
-    {
-      free (sec->relax);
-      sec->relax = NULL;
-      sec->relax_count = 0;
-    }
+  free (free_relocs);
+  free (free_contents);
+  free (sec->relax);
+  sec->relax = NULL;
+  sec->relax_count = 0;
   return FALSE;
 }
 
@@ -2551,7 +2543,7 @@ microblaze_elf_check_relocs (bfd * abfd,
 		p = *head;
 		if (p == NULL || p->sec != sec)
 		  {
-		    bfd_size_type amt = sizeof *p;
+		    size_t amt = sizeof *p;
 		    p = ((struct elf_dyn_relocs *)
 			 bfd_alloc (htab->elf.dynobj, amt));
 		    if (p == NULL)
@@ -2766,7 +2758,7 @@ microblaze_elf_adjust_dynamic_symbol (struct bfd_link_info *info,
   s->size = BFD_ALIGN (s->size, (bfd_size_type) (1 << power_of_two));
   if (power_of_two > s->alignment_power)
     {
-      if (!bfd_set_section_alignment (s->owner, s, power_of_two))
+      if (!bfd_set_section_alignment (s, power_of_two))
 	return FALSE;
     }
 
@@ -3115,7 +3107,7 @@ microblaze_elf_size_dynamic_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 
       /* It's OK to base decisions on the section name, because none
 	 of the dynobj section names depend upon the input files.  */
-      name = bfd_get_section_name (dynobj, s);
+      name = bfd_section_name (s);
 
       if (strncmp (name, ".rela", 5) == 0)
 	{
@@ -3501,7 +3493,7 @@ microblaze_elf_add_symbol_hook (bfd *abfd,
 	 put into .sbss.  */
       *secp = bfd_make_section_old_way (abfd, ".sbss");
       if (*secp == NULL
-	  || ! bfd_set_section_flags (abfd, *secp, SEC_IS_COMMON))
+	  || !bfd_set_section_flags (*secp, SEC_IS_COMMON))
 	return FALSE;
 
       *valp = sym->st_size;

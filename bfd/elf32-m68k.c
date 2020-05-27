@@ -1,5 +1,5 @@
 /* Motorola 68k series support for 32-bit ELF
-   Copyright (C) 1993-2019 Free Software Foundation, Inc.
+   Copyright (C) 1993-2020 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -25,6 +25,8 @@
 #include "elf-bfd.h"
 #include "elf/m68k.h"
 #include "opcode/m68k.h"
+#include "cpu-m68k.h"
+#include "elf32-m68k.h"
 
 static bfd_boolean
 elf_m68k_discard_copies (struct elf_link_hash_entry *, void *);
@@ -969,7 +971,7 @@ static struct bfd_link_hash_table *
 elf_m68k_link_hash_table_create (bfd *abfd)
 {
   struct elf_m68k_link_hash_table *ret;
-  bfd_size_type amt = sizeof (struct elf_m68k_link_hash_table);
+  size_t amt = sizeof (struct elf_m68k_link_hash_table);
 
   ret = (struct elf_m68k_link_hash_table *) bfd_zmalloc (amt);
   if (ret == (struct elf_m68k_link_hash_table *) NULL)
@@ -3104,7 +3106,7 @@ elf_m68k_size_dynamic_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 
       /* It's OK to base decisions on the section name, because none
 	 of the dynobj section names depend upon the input files.  */
-      name = bfd_get_section_name (dynobj, s);
+      name = bfd_section_name (s);
 
       if (strcmp (name, ".plt") == 0)
 	{
@@ -3938,7 +3940,7 @@ elf_m68k_relocate_section (bfd *output_bfd,
 		  name = (bfd_elf_string_from_elf_section
 			  (input_bfd, symtab_hdr->sh_link, sym->st_name));
 		  if (name == NULL || *name == '\0')
-		    name = bfd_section_name (input_bfd, sec);
+		    name = bfd_section_name (sec);
 		}
 
 	      _bfd_error_handler
@@ -3973,7 +3975,7 @@ elf_m68k_relocate_section (bfd *output_bfd,
 	      if (name == NULL)
 		return FALSE;
 	      if (*name == '\0')
-		name = bfd_section_name (input_bfd, sec);
+		name = bfd_section_name (sec);
 	    }
 
 	  if (r == bfd_reloc_overflow)
@@ -4446,18 +4448,16 @@ bfd_m68k_elf32_create_embedded_relocs (bfd *abfd, struct bfd_link_info *info,
 	strncpy ((char *) p + 4, targetsec->output_section->name, 8);
     }
 
-  if (isymbuf != NULL && symtab_hdr->contents != (unsigned char *) isymbuf)
+  if (symtab_hdr->contents != (unsigned char *) isymbuf)
     free (isymbuf);
-  if (internal_relocs != NULL
-      && elf_section_data (datasec)->relocs != internal_relocs)
+  if (elf_section_data (datasec)->relocs != internal_relocs)
     free (internal_relocs);
   return TRUE;
 
-error_return:
-  if (isymbuf != NULL && symtab_hdr->contents != (unsigned char *) isymbuf)
+ error_return:
+  if (symtab_hdr->contents != (unsigned char *) isymbuf)
     free (isymbuf);
-  if (internal_relocs != NULL
-      && elf_section_data (datasec)->relocs != internal_relocs)
+  if (elf_section_data (datasec)->relocs != internal_relocs)
     free (internal_relocs);
   return FALSE;
 }

@@ -1,6 +1,6 @@
 /* C language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 1992-2019 Free Software Foundation, Inc.
+   Copyright (C) 1992-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -84,9 +84,9 @@ classify_type (struct type *elttype, struct gdbarch *gdbarch,
      that would do the wrong thing.  */
   while (elttype)
     {
-      const char *name = TYPE_NAME (elttype);
+      const char *name = elttype->name ();
 
-      if (TYPE_CODE (elttype) == TYPE_CODE_CHAR || !name)
+      if (elttype->code () == TYPE_CODE_CHAR || !name)
 	{
 	  result = C_CHAR;
 	  goto done;
@@ -110,7 +110,7 @@ classify_type (struct type *elttype, struct gdbarch *gdbarch,
 	  goto done;
 	}
 
-      if (TYPE_CODE (elttype) != TYPE_CODE_TYPEDEF)
+      if (elttype->code () != TYPE_CODE_TYPEDEF)
 	break;
 
       /* Call for side effects.  */
@@ -245,17 +245,17 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
   struct type *element_type = TYPE_TARGET_TYPE (type);
   int req_length = *length;
   enum bfd_endian byte_order
-    = gdbarch_byte_order (get_type_arch (type));
+    = type_byte_order (type);
 
   if (element_type == NULL)
     goto error;
 
-  if (TYPE_CODE (type) == TYPE_CODE_ARRAY)
+  if (type->code () == TYPE_CODE_ARRAY)
     {
       /* If we know the size of the array, we can use it as a limit on
 	 the number of characters to be fetched.  */
-      if (TYPE_NFIELDS (type) == 1
-	  && TYPE_CODE (TYPE_FIELD_TYPE (type, 0)) == TYPE_CODE_RANGE)
+      if (type->num_fields () == 1
+	  && TYPE_FIELD_TYPE (type, 0)->code () == TYPE_CODE_RANGE)
 	{
 	  LONGEST low_bound, high_bound;
 
@@ -266,7 +266,7 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
       else
 	fetchlimit = UINT_MAX;
     }
-  else if (TYPE_CODE (type) == TYPE_CODE_PTR)
+  else if (type->code () == TYPE_CODE_PTR)
     fetchlimit = UINT_MAX;
   else
     /* We work only with arrays and pointers.  */
@@ -292,7 +292,7 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
      avoids running off the end of the value's contents.  */
   if ((VALUE_LVAL (value) == not_lval
        || VALUE_LVAL (value) == lval_internalvar
-       || TYPE_CODE (type) == TYPE_CODE_ARRAY)
+       || type->code () == TYPE_CODE_ARRAY)
       && fetchlimit != UINT_MAX
       && (*length < 0 || *length <= fetchlimit))
     {
@@ -303,14 +303,14 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
       if (*length >= 0)
 	i  = *length;
       else
- 	/* Otherwise, look for a null character.  */
- 	for (i = 0; i < fetchlimit; i++)
+	/* Otherwise, look for a null character.  */
+	for (i = 0; i < fetchlimit; i++)
 	  if (extract_unsigned_integer (contents + i * width,
 					width, byte_order) == 0)
- 	    break;
+	    break;
   
       /* I is now either a user-defined length, the number of non-null
- 	 characters, or FETCHLIMIT.  */
+	 characters, or FETCHLIMIT.  */
       *length = i * width;
       buffer->reset ((gdb_byte *) xmalloc (*length));
       memcpy (buffer->get (), contents, *length);
@@ -322,7 +322,7 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
 	 c_style_arrays is false, so we handle that specially
 	 here.  */
       CORE_ADDR addr;
-      if (TYPE_CODE (type) == TYPE_CODE_ARRAY)
+      if (type->code () == TYPE_CODE_ARRAY)
 	{
 	  if (VALUE_LVAL (value) != lval_memory)
 	    error (_("Attempt to take address of value "
@@ -611,16 +611,13 @@ evaluate_subexp_c (struct type *expect_type, struct expression *exp,
 					      exp->gdbarch);
 	    break;
 	  case C_WIDE_STRING:
-	    type = lookup_typename (exp->language_defn, exp->gdbarch,
-				    "wchar_t", NULL, 0);
+	    type = lookup_typename (exp->language_defn, "wchar_t", NULL, 0);
 	    break;
 	  case C_STRING_16:
-	    type = lookup_typename (exp->language_defn, exp->gdbarch,
-				    "char16_t", NULL, 0);
+	    type = lookup_typename (exp->language_defn, "char16_t", NULL, 0);
 	    break;
 	  case C_STRING_32:
-	    type = lookup_typename (exp->language_defn, exp->gdbarch,
-				    "char32_t", NULL, 0);
+	    type = lookup_typename (exp->language_defn, "char32_t", NULL, 0);
 	    break;
 	  default:
 	    internal_error (__FILE__, __LINE__, _("unhandled c_string_type"));
@@ -632,13 +629,13 @@ evaluate_subexp_c (struct type *expect_type, struct expression *exp,
 	/* If the caller expects an array of some integral type,
 	   satisfy them.  If something odder is expected, rely on the
 	   caller to cast.  */
-	if (expect_type && TYPE_CODE (expect_type) == TYPE_CODE_ARRAY)
+	if (expect_type && expect_type->code () == TYPE_CODE_ARRAY)
 	  {
 	    struct type *element_type
 	      = check_typedef (TYPE_TARGET_TYPE (expect_type));
 
-	    if (TYPE_CODE (element_type) == TYPE_CODE_INT
-		|| TYPE_CODE (element_type) == TYPE_CODE_CHAR)
+	    if (element_type->code () == TYPE_CODE_INT
+		|| element_type->code () == TYPE_CODE_CHAR)
 	      {
 		type = element_type;
 		satisfy_expected = 1;
@@ -745,13 +742,13 @@ bool
 c_is_string_type_p (struct type *type)
 {
   type = check_typedef (type);
-  while (TYPE_CODE (type) == TYPE_CODE_REF)
+  while (type->code () == TYPE_CODE_REF)
     {
       type = TYPE_TARGET_TYPE (type);
       type = check_typedef (type);
     }
 
-  switch (TYPE_CODE (type))
+  switch (type->code ())
     {
     case TYPE_CODE_ARRAY:
       {
@@ -906,7 +903,7 @@ extern const struct language_defn c_language_defn =
   c_emit_char,			/* Print a single char */
   c_print_type,			/* Print a type using appropriate syntax */
   c_print_typedef,		/* Print a typedef using appropriate syntax */
-  c_val_print,			/* Print a value using appropriate syntax */
+  c_value_print_inner,		/* la_value_print_inner */
   c_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   NULL,				/* Language specific skip_trampoline */
@@ -926,7 +923,6 @@ extern const struct language_defn c_language_defn =
   c_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
-  c_get_string,
   c_watch_location_expression,
   NULL,				/* la_get_symbol_name_matcher */
   iterate_over_symbols,
@@ -1052,7 +1048,7 @@ extern const struct language_defn cplus_language_defn =
   c_emit_char,			/* Print a single char */
   c_print_type,			/* Print a type using appropriate syntax */
   c_print_typedef,		/* Print a typedef using appropriate syntax */
-  c_val_print,			/* Print a value using appropriate syntax */
+  c_value_print_inner,		/* la_value_print_inner */
   c_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   cplus_skip_trampoline,	/* Language specific skip_trampoline */
@@ -1072,7 +1068,6 @@ extern const struct language_defn cplus_language_defn =
   cplus_language_arch_info,
   default_print_array_index,
   cp_pass_by_reference,
-  c_get_string,
   c_watch_location_expression,
   cp_get_symbol_name_matcher,
   iterate_over_symbols,
@@ -1107,7 +1102,7 @@ extern const struct language_defn asm_language_defn =
   c_emit_char,			/* Print a single char */
   c_print_type,			/* Print a type using appropriate syntax */
   c_print_typedef,		/* Print a typedef using appropriate syntax */
-  c_val_print,			/* Print a value using appropriate syntax */
+  c_value_print_inner,		/* la_value_print_inner */
   c_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   NULL,				/* Language specific skip_trampoline */
@@ -1124,10 +1119,9 @@ extern const struct language_defn asm_language_defn =
   0,				/* String lower bound */
   default_word_break_characters,
   default_collect_symbol_completion_matches,
-  c_language_arch_info, 	/* FIXME: la_language_arch_info.  */
+  c_language_arch_info,		/* FIXME: la_language_arch_info.  */
   default_print_array_index,
   default_pass_by_reference,
-  c_get_string,
   c_watch_location_expression,
   NULL,				/* la_get_symbol_name_matcher */
   iterate_over_symbols,
@@ -1162,7 +1156,7 @@ extern const struct language_defn minimal_language_defn =
   c_emit_char,			/* Print a single char */
   c_print_type,			/* Print a type using appropriate syntax */
   c_print_typedef,		/* Print a typedef using appropriate syntax */
-  c_val_print,			/* Print a value using appropriate syntax */
+  c_value_print_inner,		/* la_value_print_inner */
   c_value_print,		/* Print a top-level value */
   default_read_var_value,	/* la_read_var_value */
   NULL,				/* Language specific skip_trampoline */
@@ -1182,7 +1176,6 @@ extern const struct language_defn minimal_language_defn =
   c_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
-  c_get_string,
   c_watch_location_expression,
   NULL,				/* la_get_symbol_name_matcher */
   iterate_over_symbols,

@@ -1,6 +1,6 @@
 /* Go language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 2012-2019 Free Software Foundation, Inc.
+   Copyright (C) 2012-2020 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -73,7 +73,7 @@ gccgo_string_p (struct type *type)
 {
   /* gccgo strings don't necessarily have a name we can use.  */
 
-  if (TYPE_NFIELDS (type) == 2)
+  if (type->num_fields () == 2)
     {
       struct type *type0 = TYPE_FIELD_TYPE (type, 0);
       struct type *type1 = TYPE_FIELD_TYPE (type, 1);
@@ -81,18 +81,18 @@ gccgo_string_p (struct type *type)
       type0 = check_typedef (type0);
       type1 = check_typedef (type1);
 
-      if (TYPE_CODE (type0) == TYPE_CODE_PTR
+      if (type0->code () == TYPE_CODE_PTR
 	  && strcmp (TYPE_FIELD_NAME (type, 0), "__data") == 0
-	  && TYPE_CODE (type1) == TYPE_CODE_INT
+	  && type1->code () == TYPE_CODE_INT
 	  && strcmp (TYPE_FIELD_NAME (type, 1), "__length") == 0)
 	{
 	  struct type *target_type = TYPE_TARGET_TYPE (type0);
 
 	  target_type = check_typedef (target_type);
 
-	  if (TYPE_CODE (target_type) == TYPE_CODE_INT
+	  if (target_type->code () == TYPE_CODE_INT
 	      && TYPE_LENGTH (target_type) == 1
-	      && strcmp (TYPE_NAME (target_type), "uint8") == 0)
+	      && strcmp (target_type->name (), "uint8") == 0)
 	    return 1;
 	}
     }
@@ -106,9 +106,9 @@ gccgo_string_p (struct type *type)
 static int
 sixg_string_p (struct type *type)
 {
-  if (TYPE_NFIELDS (type) == 2
-      && TYPE_NAME (type) != NULL
-      && strcmp (TYPE_NAME (type), "string") == 0)
+  if (type->num_fields () == 2
+      && type->name () != NULL
+      && strcmp (type->name (), "string") == 0)
     return 1;
 
   return 0;
@@ -137,7 +137,7 @@ static bool
 go_is_string_type_p (struct type *type)
 {
   type = check_typedef (type);
-  return (TYPE_CODE (type) == TYPE_CODE_STRUCT
+  return (type->code () == TYPE_CODE_STRUCT
 	  && go_classify_struct_type (type) == GO_TYPE_STRING);
 }
 
@@ -411,7 +411,7 @@ go_sniff_from_mangled_name (const char *mangled, char **demangled)
 char *
 go_symbol_package_name (const struct symbol *sym)
 {
-  const char *mangled_name = SYMBOL_LINKAGE_NAME (sym);
+  const char *mangled_name = sym->linkage_name ();
   const char *package_name;
   const char *object_name;
   const char *method_type_package_name;
@@ -420,7 +420,7 @@ go_symbol_package_name (const struct symbol *sym)
   char *name_buf;
   char *result;
 
-  gdb_assert (SYMBOL_LANGUAGE (sym) == language_go);
+  gdb_assert (sym->language () == language_go);
   name_buf = unpack_mangled_go_symbol (mangled_name,
 				       &package_name, &object_name,
 				       &method_type_package_name,
@@ -595,7 +595,7 @@ extern const struct language_defn go_language_defn =
   go_print_type,		/* Print a type using appropriate syntax.  */
   c_print_typedef,		/* Print a typedef using appropriate
 				   syntax.  */
-  go_val_print,			/* Print a value using appropriate syntax.  */
+  go_value_print_inner,		/* la_value_print_inner */
   c_value_print,		/* Print a top-level value.  */
   default_read_var_value,	/* la_read_var_value */
   NULL,				/* Language specific skip_trampoline.  */
@@ -615,7 +615,6 @@ extern const struct language_defn go_language_defn =
   go_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
-  c_get_string,
   c_watch_location_expression,
   NULL,				/* la_get_symbol_name_matcher */
   iterate_over_symbols,
@@ -666,11 +665,9 @@ build_go_types (struct gdbarch *gdbarch)
   builtin_go_type->builtin_float64
     = arch_float_type (gdbarch, 64, "float64", floatformats_ieee_double);
   builtin_go_type->builtin_complex64
-    = arch_complex_type (gdbarch, "complex64",
-			 builtin_go_type->builtin_float32);
+    = init_complex_type ("complex64", builtin_go_type->builtin_float32);
   builtin_go_type->builtin_complex128
-    = arch_complex_type (gdbarch, "complex128",
-			 builtin_go_type->builtin_float64);
+    = init_complex_type ("complex128", builtin_go_type->builtin_float64);
 
   return builtin_go_type;
 }
@@ -683,8 +680,9 @@ builtin_go_type (struct gdbarch *gdbarch)
   return (const struct builtin_go_type *) gdbarch_data (gdbarch, go_type_data);
 }
 
+void _initialize_go_language ();
 void
-_initialize_go_language (void)
+_initialize_go_language ()
 {
   go_type_data = gdbarch_data_register_post_init (build_go_types);
 }

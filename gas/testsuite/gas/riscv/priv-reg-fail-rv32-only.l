@@ -1,0 +1,91 @@
+.*Assembler messages:
+.*Warning: Invalid CSR `cycleh' for the current ISA
+.*Warning: Invalid CSR `timeh' for the current ISA
+.*Warning: Invalid CSR `instreth' for the current ISA
+.*Warning: Invalid CSR `hpmcounter3h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter4h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter5h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter6h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter7h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter8h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter9h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter10h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter11h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter12h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter13h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter14h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter15h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter16h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter17h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter18h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter19h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter20h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter21h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter22h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter23h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter24h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter25h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter26h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter27h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter28h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter29h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter30h' for the current ISA
+.*Warning: Invalid CSR `hpmcounter31h' for the current ISA
+.*Warning: Invalid CSR `pmpcfg1' for the current ISA
+.*Warning: Invalid CSR `pmpcfg3' for the current ISA
+.*Warning: Invalid CSR `mcycleh' for the current ISA
+.*Warning: Invalid CSR `minstreth' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter3h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter4h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter5h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter6h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter7h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter8h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter9h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter10h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter11h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter12h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter13h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter14h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter15h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter16h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter17h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter18h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter19h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter20h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter21h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter22h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter23h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter24h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter25h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter26h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter27h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter28h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter29h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter30h' for the current ISA
+.*Warning: Invalid CSR `mhpmcounter31h' for the current ISA
+
+.*Warning: Invalid CSR `ubadaddr' for the privilege spec `1.11'
+.*Warning: Invalid CSR `sbadaddr' for the privilege spec `1.11'
+.*Warning: Invalid CSR `sptbr' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mbadaddr' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mucounteren' for the privilege spec `1.11'
+.*Warning: Invalid CSR `dscratch' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hstatus' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hedeleg' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hideleg' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hie' for the privilege spec `1.11'
+.*Warning: Invalid CSR `htvec' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hscratch' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hepc' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hcause' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hbadaddr' for the privilege spec `1.11'
+.*Warning: Invalid CSR `hip' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mbase' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mbound' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mibase' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mibound' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mdbase' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mdbound' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mscounteren' for the privilege spec `1.11'
+.*Warning: Invalid CSR `mhcounteren' for the privilege spec `1.11'
