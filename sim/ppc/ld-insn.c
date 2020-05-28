@@ -28,6 +28,26 @@
 
 #include "igen.h"
 
+model *models = NULL;
+model *last_model = NULL;
+
+insn *model_macros = NULL;
+insn *last_model_macro = NULL;
+
+insn *model_functions = NULL;
+insn *last_model_function = NULL;
+
+insn *model_internal = NULL;
+insn *last_model_internal = NULL;
+
+insn *model_static = NULL;
+insn *last_model_static = NULL;
+
+insn *model_data = NULL;
+insn *last_model_data = NULL;
+
+int max_model_fields_len = 0;
+
 static void
 update_depth(insn_table *entry,
 	     lf *file,
